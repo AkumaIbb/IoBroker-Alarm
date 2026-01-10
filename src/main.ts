@@ -12,36 +12,54 @@ const CONTROL_MODE_VALUES = [
 
 type ControlMode = (typeof CONTROL_MODE_VALUES)[number];
 
-type OutputActiveIn = ControlMode | "beep";
+type SensorType = "contact" | "motion" | "vibration" | "custom";
+type SensorModeMask = "perimeter" | "full";
+type OutputType = "siren" | "light" | "notification" | "custom";
 
 interface SmarthomeAlarmConfig {
   exitDelaySec: number;
   entryDelaySec: number;
+  chirpSec: number;
   preAlarmSec: number;
   alarmDurationSec: number;
   blockArmingIfOpen: boolean;
   autoBypassOpenOnArming: boolean;
   useBaselineSnapshot: boolean;
   debounceMsDefault: number;
-  sensors: Array<{
-    stateId: string;
-    name: string;
-    role: "perimeter" | "entry" | "interior" | "24h";
-    invert: boolean;
-    triggerValue: boolean;
-    policy: "instant" | "entryDelay" | "silent";
-    bypass: boolean;
-    debounceMs?: number;
-  }>;
-  outputs?: Array<{
-    stateId: string;
-    name: string;
-    activeIn: OutputActiveIn[];
-    value?: boolean;
-  }>;
+  sensors: ConfigSensor[];
+  outputs: ConfigOutput[];
 }
 
-type OutputConfig = NonNullable<SmarthomeAlarmConfig["outputs"]>[number];
+interface ConfigSensor {
+  id: string;
+  name: string;
+  type: SensorType;
+  invert: boolean;
+  debounceMs?: number;
+  bypassable: boolean;
+  modeMask?: SensorModeMask[];
+}
+
+interface ConfigOutput {
+  id: string;
+  name: string;
+  type: OutputType;
+  activeValue?: string | number | boolean;
+  inactiveValue?: string | number | boolean;
+}
+
+interface InternalSensor extends ConfigSensor {
+  stateId: string;
+  triggerValue: boolean;
+  policy: "instant";
+  modeMask: SensorModeMask[];
+}
+
+interface InternalOutput extends ConfigOutput {
+  stateId: string;
+  activeValue: ioBroker.StateValue;
+  inactiveValue: ioBroker.StateValue;
+}
 
 type EventSeverity = "info" | "warning" | "alarm";
 
@@ -53,16 +71,16 @@ class SmarthomeAlarm extends utils.Adapter {
   private preAlarmTimeout: ReturnType<typeof setTimeout> | null = null;
   private alarmDurationTimeout: ReturnType<typeof setTimeout> | null = null;
   private silentEventTimeout: ReturnType<typeof setTimeout> | null = null;
-  private sensorsByStateId = new Map<string, SmarthomeAlarmConfig["sensors"][number]>();
+  private sensorsByStateId = new Map<string, InternalSensor>();
+  private configuredSensors: InternalSensor[] = [];
+  private configuredOutputs: InternalOutput[] = [];
   private troubleSensors = new Set<string>();
   private lastEventTimestamp = new Map<string, number>();
   private lastSensorValue = new Map<string, boolean>();
   private baselineSnapshot = new Map<string, boolean>();
   private runtimeBypass = new Set<string>();
   private initializingSensors = false;
-  private lastOutputValues = new Map<string, boolean>();
-  private beepInterval: ReturnType<typeof setInterval> | null = null;
-  private beepState = true;
+  private lastOutputValues = new Map<string, ioBroker.StateValue>();
 
   public constructor(options: Partial<utils.AdapterOptions> = {}) {
     super({
@@ -76,7 +94,41 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async onReady(): Promise<void> {
+    const { configured, inputCount, outputCount } = this.prepareConfiguration();
     const config = this.config as SmarthomeAlarmConfig;
+
+    await this.ensureState("configured", {
+      name: { de: "Konfiguriert", en: "Configured" },
+      type: "boolean",
+      role: "indicator",
+      read: true,
+      write: false,
+      def: false,
+    }, false);
+
+    await this.ensureState("inputCount", {
+      name: { de: "Anzahl Eingänge", en: "Input count" },
+      type: "number",
+      role: "value",
+      read: true,
+      write: false,
+      def: 0,
+    }, 0);
+
+    await this.ensureState("outputCount", {
+      name: { de: "Anzahl Ausgänge", en: "Output count" },
+      type: "number",
+      role: "value",
+      read: true,
+      write: false,
+      def: 0,
+    }, 0);
+
+    await this.syncConfiguredObjects();
+    await this.setStateAsync("configured", { val: configured, ack: true });
+    await this.setStateAsync("inputCount", { val: inputCount, ack: true });
+    await this.setStateAsync("outputCount", { val: outputCount, ack: true });
+    this.log.info(`Configured inputs: ${inputCount}, outputs: ${outputCount}`);
 
     await this.ensureState("control.mode", {
       name: { de: "Modus", en: "Mode" },
@@ -354,8 +406,13 @@ class SmarthomeAlarm extends utils.Adapter {
       }
 
       if (config.autoBypassOpenOnArming) {
-        openSensors.forEach((sensorId) => this.runtimeBypass.add(sensorId));
-        bypassedSensors = openSensors;
+        for (const sensorId of openSensors) {
+          const sensor = this.sensorsByStateId.get(sensorId);
+          if (sensor?.bypassable) {
+            this.runtimeBypass.add(sensorId);
+            bypassedSensors.push(sensorId);
+          }
+        }
       }
     }
 
@@ -497,12 +554,227 @@ class SmarthomeAlarm extends utils.Adapter {
     }
   }
 
-  private async initializeSensors(): Promise<void> {
+  private prepareConfiguration(): { configured: boolean; inputCount: number; outputCount: number } {
     const config = this.config as SmarthomeAlarmConfig;
+    const sensors = Array.isArray(config.sensors) ? config.sensors : [];
+    const outputs = Array.isArray(config.outputs) ? config.outputs : [];
+    let configured = true;
+
+    this.configuredSensors = sensors.flatMap((sensor, index) => {
+      if (!sensor?.id) {
+        this.log.warn(`Sensor entry ${index + 1} is missing an id.`);
+        configured = false;
+        return [];
+      }
+      const modeMask = sensor.modeMask && sensor.modeMask.length > 0 ? sensor.modeMask : ["perimeter", "full"];
+      return [{
+        ...sensor,
+        name: sensor.name || sensor.id,
+        stateId: sensor.id,
+        triggerValue: true,
+        policy: "instant",
+        modeMask,
+      }];
+    });
+
+    this.configuredOutputs = outputs.flatMap((output, index) => {
+      if (!output?.id) {
+        this.log.warn(`Output entry ${index + 1} is missing an id.`);
+        configured = false;
+        return [];
+      }
+      return [{
+        ...output,
+        name: output.name || output.id,
+        stateId: output.id,
+        activeValue: this.normalizeOutputValue(output.activeValue, true),
+        inactiveValue: this.normalizeOutputValue(output.inactiveValue, false),
+      }];
+    });
+
+    return {
+      configured,
+      inputCount: this.configuredSensors.length,
+      outputCount: this.configuredOutputs.length,
+    };
+  }
+
+  private normalizeOutputValue(value: unknown, fallback: ioBroker.StateValue): ioBroker.StateValue {
+    if (value === null || value === undefined || value === "") {
+      return fallback;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return fallback;
+      }
+      const lowered = trimmed.toLowerCase();
+      if (lowered === "true") {
+        return true;
+      }
+      if (lowered === "false") {
+        return false;
+      }
+      const asNumber = Number(trimmed);
+      if (!Number.isNaN(asNumber) && trimmed !== "") {
+        return asNumber;
+      }
+      return trimmed;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    return fallback;
+  }
+
+  private sanitizeChannelId(value: string): string {
+    const base = value.trim().toLowerCase();
+    const cleaned = base.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    return cleaned || "item";
+  }
+
+  private buildUniqueId(base: string, used: Set<string>, fallback: string): string {
+    const sanitized = this.sanitizeChannelId(base || fallback);
+    let candidate = sanitized;
+    let counter = 2;
+    while (used.has(candidate)) {
+      candidate = `${sanitized}_${counter}`;
+      counter += 1;
+    }
+    used.add(candidate);
+    return candidate;
+  }
+
+  private async syncConfiguredObjects(): Promise<void> {
+    await this.setObjectNotExistsAsync("inputs", {
+      type: "channel",
+      common: { name: { de: "Eingänge", en: "Inputs" } },
+      native: {},
+    });
+    await this.setObjectNotExistsAsync("outputs", {
+      type: "channel",
+      common: { name: { de: "Ausgänge", en: "Outputs" } },
+      native: {},
+    });
+
+    const usedInputs = new Set<string>();
+    for (const [index, sensor] of this.configuredSensors.entries()) {
+      const channelSuffix = this.buildUniqueId(sensor.name || sensor.stateId, usedInputs, `sensor_${index + 1}`);
+      const channelId = `inputs.${channelSuffix}`;
+      await this.setObjectNotExistsAsync(channelId, {
+        type: "channel",
+        common: { name: sensor.name || sensor.stateId },
+        native: {},
+      });
+      await this.ensureState(`${channelId}.id`, {
+        name: { de: "State-ID", en: "State ID" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.ensureState(`${channelId}.type`, {
+        name: { de: "Typ", en: "Type" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.ensureState(`${channelId}.invert`, {
+        name: { de: "Invertiert", en: "Inverted" },
+        type: "boolean",
+        role: "indicator",
+        read: true,
+        write: false,
+        def: false,
+      }, false);
+      await this.ensureState(`${channelId}.debounceMs`, {
+        name: { de: "Entprellung (ms)", en: "Debounce (ms)" },
+        type: "number",
+        role: "value",
+        read: true,
+        write: false,
+        def: 0,
+      }, 0);
+      await this.ensureState(`${channelId}.bypassable`, {
+        name: { de: "Überbrückbar", en: "Bypassable" },
+        type: "boolean",
+        role: "indicator",
+        read: true,
+        write: false,
+        def: false,
+      }, false);
+      await this.ensureState(`${channelId}.modeMask`, {
+        name: { de: "Modus-Maske", en: "Mode mask" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "[]",
+      }, "[]");
+      await this.setStateAsync(`${channelId}.id`, { val: sensor.stateId, ack: true });
+      await this.setStateAsync(`${channelId}.type`, { val: sensor.type, ack: true });
+      await this.setStateAsync(`${channelId}.invert`, { val: sensor.invert ?? false, ack: true });
+      await this.setStateAsync(`${channelId}.debounceMs`, { val: sensor.debounceMs ?? 0, ack: true });
+      await this.setStateAsync(`${channelId}.bypassable`, { val: sensor.bypassable ?? false, ack: true });
+      await this.setStateAsync(`${channelId}.modeMask`, { val: JSON.stringify(sensor.modeMask ?? []), ack: true });
+    }
+
+    const usedOutputs = new Set<string>();
+    for (const [index, output] of this.configuredOutputs.entries()) {
+      const channelSuffix = this.buildUniqueId(output.name || output.stateId, usedOutputs, `output_${index + 1}`);
+      const channelId = `outputs.${channelSuffix}`;
+      await this.setObjectNotExistsAsync(channelId, {
+        type: "channel",
+        common: { name: output.name || output.stateId },
+        native: {},
+      });
+      await this.ensureState(`${channelId}.id`, {
+        name: { de: "State-ID", en: "State ID" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.ensureState(`${channelId}.type`, {
+        name: { de: "Typ", en: "Type" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.ensureState(`${channelId}.activeValue`, {
+        name: { de: "Aktiver Wert", en: "Active value" },
+        type: "mixed",
+        role: "value",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.ensureState(`${channelId}.inactiveValue`, {
+        name: { de: "Inaktiver Wert", en: "Inactive value" },
+        type: "mixed",
+        role: "value",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
+      await this.setStateAsync(`${channelId}.id`, { val: output.stateId, ack: true });
+      await this.setStateAsync(`${channelId}.type`, { val: output.type, ack: true });
+      await this.setStateAsync(`${channelId}.activeValue`, { val: output.activeValue, ack: true });
+      await this.setStateAsync(`${channelId}.inactiveValue`, { val: output.inactiveValue, ack: true });
+    }
+  }
+
+  private async initializeSensors(): Promise<void> {
     this.initializingSensors = true;
     this.sensorsByStateId.clear();
 
-    for (const sensor of config.sensors || []) {
+    for (const sensor of this.configuredSensors) {
       if (!sensor.stateId) {
         continue;
       }
@@ -558,10 +830,6 @@ class SmarthomeAlarm extends utils.Adapter {
       return;
     }
 
-    if (sensor.bypass) {
-      return;
-    }
-
     const previousValue = this.lastSensorValue.get(id);
     this.lastSensorValue.set(id, normalized);
     if (previousValue === undefined) {
@@ -580,7 +848,7 @@ class SmarthomeAlarm extends utils.Adapter {
 
   private normalizeSensorValue(
     value: ioBroker.StateValue,
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
   ): boolean | null {
     if (value === null || value === undefined) {
       return null;
@@ -634,7 +902,7 @@ class SmarthomeAlarm extends utils.Adapter {
       if (!this.isSensorRelevantForMode(sensor, targetMode)) {
         continue;
       }
-      if (sensor.bypass || this.runtimeBypass.has(stateId)) {
+      if (this.runtimeBypass.has(stateId)) {
         continue;
       }
       const state = await this.getForeignStateAsync(stateId);
@@ -652,14 +920,15 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private isSensorRelevantForMode(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     targetMode: ControlMode,
   ): boolean {
+    const modes = sensor.modeMask;
     if (targetMode === "armed_perimeter") {
-      return sensor.role === "perimeter" || sensor.role === "entry" || sensor.role === "24h";
+      return modes.includes("perimeter");
     }
     if (targetMode === "armed_full") {
-      return sensor.role === "perimeter" || sensor.role === "entry" || sensor.role === "interior" || sensor.role === "24h";
+      return modes.includes("full");
     }
     return false;
   }
@@ -674,7 +943,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async handleSensorTrigger(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     stateId: string,
     mode: ControlMode,
   ): Promise<void> {
@@ -687,7 +956,7 @@ class SmarthomeAlarm extends utils.Adapter {
       return;
     }
 
-    if (mode === "armed_perimeter" && sensor.role === "interior") {
+    if (mode === "armed_perimeter" && !sensor.modeMask.includes("perimeter")) {
       return;
     }
 
@@ -703,7 +972,7 @@ class SmarthomeAlarm extends utils.Adapter {
       return;
     }
 
-    if (sensor.policy === "entryDelay" && sensor.role === "entry") {
+    if (sensor.policy === "entryDelay") {
       await this.startEntryDelay(sensor, stateId);
       return;
     }
@@ -714,7 +983,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async startEntryDelay(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     stateId: string,
   ): Promise<void> {
     const config = this.config as SmarthomeAlarmConfig;
@@ -750,7 +1019,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async triggerAlarm(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     stateId: string,
     reason: string,
   ): Promise<void> {
@@ -767,7 +1036,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async startPreAlarm(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     reason: string,
   ): Promise<void> {
     const config = this.config as SmarthomeAlarmConfig;
@@ -790,7 +1059,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async startFullAlarm(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
     reason: string,
   ): Promise<void> {
     const config = this.config as SmarthomeAlarmConfig;
@@ -818,7 +1087,7 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async handleSilentEvent(
-    sensor: SmarthomeAlarmConfig["sensors"][number],
+    sensor: InternalSensor,
   ): Promise<void> {
     const mode = await this.getControlMode();
     await this.updateLastEvent("silent_trigger", sensor);
@@ -839,7 +1108,7 @@ class SmarthomeAlarm extends utils.Adapter {
 
   private async updateLastEvent(
     reason: string,
-    sensor?: SmarthomeAlarmConfig["sensors"][number],
+    sensor?: InternalSensor,
     mode?: ControlMode,
   ): Promise<void> {
     const triggerSensor = sensor?.name || sensor?.stateId || "";
@@ -894,35 +1163,22 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async updateOutputsForMode(mode: ControlMode): Promise<void> {
-    const outputs = (this.config as SmarthomeAlarmConfig).outputs ?? [];
-    await this.stopBeepPattern();
+    const outputs = this.configuredOutputs;
     this.lastOutputValues.clear();
 
     for (const output of outputs) {
       if (!output.stateId) {
         continue;
       }
-      const activeValue = output.value ?? true;
-      const isBeepOutput = output.activeIn?.includes("beep");
-      if ((mode === "entry_delay" || mode === "arming") && isBeepOutput) {
-        await this.setOutputValue(output.stateId, activeValue);
-        continue;
-      }
-
-      const isActive = output.activeIn?.includes(mode);
-      const targetValue = isActive ? activeValue : !activeValue;
+      const isActive = mode === "alarm_pre" || mode === "alarm_full";
+      const targetValue = isActive ? output.activeValue : output.inactiveValue;
       await this.setOutputValue(output.stateId, targetValue);
     }
 
     await this.updateOutputsStatus();
-
-    const beepOutputs = outputs.filter((output) => output.stateId && output.activeIn?.includes("beep"));
-    if ((mode === "entry_delay" || mode === "arming") && beepOutputs.length > 0) {
-      await this.startBeepPattern(beepOutputs);
-    }
   }
 
-  private async setOutputValue(stateId: string, value: boolean): Promise<void> {
+  private async setOutputValue(stateId: string, value: ioBroker.StateValue): Promise<void> {
     await this.setForeignStateAsync(stateId, { val: value, ack: true });
     this.lastOutputValues.set(stateId, value);
   }
@@ -932,37 +1188,6 @@ class SmarthomeAlarm extends utils.Adapter {
       val: JSON.stringify(Object.fromEntries(this.lastOutputValues)),
       ack: true,
     });
-  }
-
-  private async startBeepPattern(outputs: OutputConfig[]): Promise<void> {
-    if (outputs.length === 0) {
-      return;
-    }
-    this.beepState = true;
-    await this.applyBeepPattern(outputs);
-    this.beepInterval = setInterval(() => {
-      this.beepState = !this.beepState;
-      void this.applyBeepPattern(outputs);
-    }, 1000);
-  }
-
-  private async applyBeepPattern(outputs: OutputConfig[]): Promise<void> {
-    for (const output of outputs) {
-      if (!output?.stateId) {
-        continue;
-      }
-      const activeValue = output.value ?? true;
-      const targetValue = this.beepState ? activeValue : !activeValue;
-      await this.setOutputValue(output.stateId, targetValue);
-    }
-    await this.updateOutputsStatus();
-  }
-
-  private async stopBeepPattern(): Promise<void> {
-    if (this.beepInterval) {
-      clearInterval(this.beepInterval);
-      this.beepInterval = null;
-    }
   }
 
   private getSensorName(sensorId: string): string {

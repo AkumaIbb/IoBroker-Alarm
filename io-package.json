@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "smarthome-alarm",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "news": {
+      "0.0.4": {
+        "en": "Expand jsonConfig and admin translations",
+        "de": "jsonConfig und Admin-Übersetzungen erweitert"
+      },
       "0.0.3": {
         "en": "Fix admin UI build output paths",
         "de": "Admin-UI-Build-Ausgabepfade korrigiert"
