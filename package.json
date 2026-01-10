@@ -1,0 +1,38 @@
+{
+  "name": "iobroker.smarthome-alarm",
+  "version": "0.0.1",
+  "description": "ioBroker adapter providing smarthome alarm logic",
+  "author": "",
+  "homepage": "https://www.iobroker.net",
+  "license": "MIT",
+  "keywords": [
+    "ioBroker",
+    "adapter",
+    "alarm",
+    "smarthome"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "main": "build/main.js",
+  "types": "build/main.d.ts",
+  "files": [
+    "admin/",
+    "build/",
+    "io-package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "test": "echo \"No tests specified\""
+  },
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.2.1"
+  },
+  "devDependencies": {
+    "@iobroker/types": "^5.1.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}
