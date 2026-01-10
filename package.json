@@ -23,8 +23,9 @@
     "io-package.json"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.json",
     "build:admin": "npm --prefix admin run build",
+    "build": "npm run build:ts && npm run build:admin",
     "watch": "tsc -p tsconfig.json --watch",
     "test": "echo \"No tests specified\""
   },
