@@ -36,9 +36,15 @@ interface SmarthomeAlarmConfig {
 class SmarthomeAlarm extends utils.Adapter {
   private exitTimeout: ReturnType<typeof setTimeout> | null = null;
   private exitInterval: ReturnType<typeof setInterval> | null = null;
+  private entryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private entryInterval: ReturnType<typeof setInterval> | null = null;
+  private preAlarmTimeout: ReturnType<typeof setTimeout> | null = null;
+  private alarmDurationTimeout: ReturnType<typeof setTimeout> | null = null;
+  private silentEventTimeout: ReturnType<typeof setTimeout> | null = null;
   private sensorsByStateId = new Map<string, SmarthomeAlarmConfig["sensors"][number]>();
   private troubleSensors = new Set<string>();
   private lastEventTimestamp = new Map<string, number>();
+  private lastSensorValue = new Map<string, boolean>();
   private baselineSnapshot = new Map<string, boolean>();
   private runtimeBypass = new Set<string>();
   private initializingSensors = false;
@@ -98,11 +104,27 @@ class SmarthomeAlarm extends utils.Adapter {
       def: false,
     }, false);
 
+    await this.ensureState("alarm.outputsActive", {
+      type: "boolean",
+      role: "indicator.alarm",
+      read: true,
+      write: false,
+      def: false,
+    }, false);
+
     await this.ensureState("alarm.silenced", {
       type: "boolean",
       role: "switch",
       read: true,
       write: true,
+      def: false,
+    }, false);
+
+    await this.ensureState("alarm.silentEvent", {
+      type: "boolean",
+      role: "indicator",
+      read: true,
+      write: false,
       def: false,
     }, false);
 
@@ -247,6 +269,10 @@ class SmarthomeAlarm extends utils.Adapter {
     const delaySec = Math.max(0, config.exitDelaySec || 0);
 
     await this.clearExitTimers();
+    await this.clearEntryTimers();
+    await this.clearPreAlarmTimer();
+    await this.clearAlarmDurationTimer();
+    await this.clearSilentEventTimer();
 
     const openSensors = await this.getOpenSensorsForMode(targetMode);
     await this.setStateAsync("arming.openList", { val: JSON.stringify(openSensors), ack: true });
@@ -255,7 +281,7 @@ class SmarthomeAlarm extends utils.Adapter {
     if (openSensors.length > 0) {
       if (config.blockArmingIfOpen) {
         await this.setStateAsync("control.mode", { val: "disarmed", ack: true });
-        await this.setStateAsync("last.reason", { val: "arming_blocked_open", ack: true });
+        await this.updateLastEvent("arming_blocked_open");
         await this.setStateAsync("arming.bypassedList", { val: "[]", ack: true });
         return;
       }
@@ -297,18 +323,27 @@ class SmarthomeAlarm extends utils.Adapter {
       await this.captureBaselineSnapshot();
     }
     await this.setStateAsync("control.mode", { val: targetMode, ack: true });
+    await this.updateLastEvent("armed", undefined, targetMode);
   }
 
   private async handleDisarm(): Promise<void> {
     await this.clearExitTimers();
+    await this.clearEntryTimers();
+    await this.clearPreAlarmTimer();
+    await this.clearAlarmDurationTimer();
+    await this.clearSilentEventTimer();
     await this.setStateAsync("control.mode", { val: "disarmed", ack: true });
     await this.setStateAsync("timers.exitRemaining", { val: 0, ack: true });
+    await this.setStateAsync("timers.entryRemaining", { val: 0, ack: true });
     await this.setStateAsync("alarm.active", { val: false, ack: true });
+    await this.setStateAsync("alarm.outputsActive", { val: false, ack: true });
     await this.setStateAsync("alarm.silenced", { val: false, ack: true });
+    await this.setStateAsync("alarm.silentEvent", { val: false, ack: true });
     this.runtimeBypass.clear();
     this.baselineSnapshot.clear();
     await this.setStateAsync("arming.openList", { val: "[]", ack: true });
     await this.setStateAsync("arming.bypassedList", { val: "[]", ack: true });
+    await this.updateLastEvent("disarmed");
   }
 
   private async clearExitTimers(): Promise<void> {
@@ -319,6 +354,38 @@ class SmarthomeAlarm extends utils.Adapter {
     if (this.exitInterval) {
       clearInterval(this.exitInterval);
       this.exitInterval = null;
+    }
+  }
+
+  private async clearEntryTimers(): Promise<void> {
+    if (this.entryTimeout) {
+      clearTimeout(this.entryTimeout);
+      this.entryTimeout = null;
+    }
+    if (this.entryInterval) {
+      clearInterval(this.entryInterval);
+      this.entryInterval = null;
+    }
+  }
+
+  private async clearPreAlarmTimer(): Promise<void> {
+    if (this.preAlarmTimeout) {
+      clearTimeout(this.preAlarmTimeout);
+      this.preAlarmTimeout = null;
+    }
+  }
+
+  private async clearAlarmDurationTimer(): Promise<void> {
+    if (this.alarmDurationTimeout) {
+      clearTimeout(this.alarmDurationTimeout);
+      this.alarmDurationTimeout = null;
+    }
+  }
+
+  private async clearSilentEventTimer(): Promise<void> {
+    if (this.silentEventTimeout) {
+      clearTimeout(this.silentEventTimeout);
+      this.silentEventTimeout = null;
     }
   }
 
@@ -405,6 +472,25 @@ class SmarthomeAlarm extends utils.Adapter {
     if (this.runtimeBypass.has(id)) {
       return;
     }
+
+    if (sensor.bypass) {
+      return;
+    }
+
+    const previousValue = this.lastSensorValue.get(id);
+    this.lastSensorValue.set(id, normalized);
+    if (previousValue === undefined) {
+      return;
+    }
+    if (previousValue === normalized) {
+      return;
+    }
+    if (normalized !== sensor.triggerValue) {
+      return;
+    }
+
+    const currentMode = await this.getControlMode();
+    await this.handleSensorTrigger(sensor, id, currentMode);
   }
 
   private normalizeSensorValue(
@@ -485,12 +571,168 @@ class SmarthomeAlarm extends utils.Adapter {
     targetMode: ControlMode,
   ): boolean {
     if (targetMode === "armed_perimeter") {
-      return sensor.role === "perimeter";
+      return sensor.role === "perimeter" || sensor.role === "entry" || sensor.role === "24h";
     }
     if (targetMode === "armed_full") {
-      return sensor.role === "perimeter" || sensor.role === "entry";
+      return sensor.role === "perimeter" || sensor.role === "entry" || sensor.role === "interior" || sensor.role === "24h";
     }
     return false;
+  }
+
+  private async getControlMode(): Promise<ControlMode> {
+    const currentModeState = await this.getStateAsync("control.mode");
+    const currentMode = currentModeState?.val;
+    if (CONTROL_MODE_VALUES.includes(currentMode as ControlMode)) {
+      return currentMode as ControlMode;
+    }
+    return "disarmed";
+  }
+
+  private async handleSensorTrigger(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+    stateId: string,
+    mode: ControlMode,
+  ): Promise<void> {
+    if (sensor.policy === "silent") {
+      await this.handleSilentEvent(sensor);
+      return;
+    }
+
+    if (mode === "arming" || mode === "disarmed") {
+      return;
+    }
+
+    if (mode === "armed_perimeter" && sensor.role === "interior") {
+      return;
+    }
+
+    if (mode === "entry_delay") {
+      if (sensor.policy === "instant") {
+        await this.triggerAlarm(sensor, stateId, "instant_during_entry");
+      }
+      return;
+    }
+
+    if (mode === "alarm_pre" || mode === "alarm_full") {
+      await this.updateLastEvent("alarm_triggered", sensor, mode);
+      return;
+    }
+
+    if (sensor.policy === "entryDelay" && sensor.role === "entry") {
+      await this.startEntryDelay(sensor, stateId);
+      return;
+    }
+
+    if (sensor.policy === "instant") {
+      await this.triggerAlarm(sensor, stateId, "instant_trigger");
+    }
+  }
+
+  private async startEntryDelay(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+    stateId: string,
+  ): Promise<void> {
+    const config = this.config as SmarthomeAlarmConfig;
+    const delaySec = Math.max(0, config.entryDelaySec || 0);
+    await this.clearEntryTimers();
+    await this.setStateAsync("control.mode", { val: "entry_delay", ack: true });
+    await this.updateLastEvent("entry_delay", sensor);
+
+    if (delaySec === 0) {
+      await this.triggerAlarm(sensor, stateId, "entry_delay_elapsed");
+      return;
+    }
+
+    let remaining = delaySec;
+    await this.setStateAsync("timers.entryRemaining", { val: remaining, ack: true });
+
+    this.entryInterval = setInterval(async () => {
+      remaining -= 1;
+      await this.setStateAsync("timers.entryRemaining", { val: Math.max(remaining, 0), ack: true });
+    }, 1000);
+
+    this.entryTimeout = setTimeout(async () => {
+      await this.triggerAlarm(sensor, stateId, "entry_delay_elapsed");
+    }, delaySec * 1000);
+  }
+
+  private async triggerAlarm(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+    stateId: string,
+    reason: string,
+  ): Promise<void> {
+    const config = this.config as SmarthomeAlarmConfig;
+    await this.clearEntryTimers();
+    await this.setStateAsync("timers.entryRemaining", { val: 0, ack: true });
+
+    if (config.preAlarmSec && config.preAlarmSec > 0) {
+      await this.startPreAlarm(sensor, reason);
+      return;
+    }
+
+    await this.startFullAlarm(sensor, reason);
+  }
+
+  private async startPreAlarm(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+    reason: string,
+  ): Promise<void> {
+    const config = this.config as SmarthomeAlarmConfig;
+    await this.clearPreAlarmTimer();
+    await this.setStateAsync("control.mode", { val: "alarm_pre", ack: true });
+    await this.updateLastEvent(reason, sensor, "alarm_pre");
+
+    const delaySec = Math.max(0, config.preAlarmSec || 0);
+    this.preAlarmTimeout = setTimeout(async () => {
+      await this.startFullAlarm(sensor, "alarm_pre_elapsed");
+    }, delaySec * 1000);
+  }
+
+  private async startFullAlarm(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+    reason: string,
+  ): Promise<void> {
+    const config = this.config as SmarthomeAlarmConfig;
+    await this.clearPreAlarmTimer();
+    await this.clearAlarmDurationTimer();
+    await this.setStateAsync("control.mode", { val: "alarm_full", ack: true });
+    await this.setStateAsync("alarm.active", { val: true, ack: true });
+    await this.setStateAsync("alarm.outputsActive", { val: true, ack: true });
+    await this.updateLastEvent(reason, sensor, "alarm_full");
+
+    const durationSec = Math.max(0, config.alarmDurationSec || 0);
+    if (durationSec > 0) {
+      this.alarmDurationTimeout = setTimeout(async () => {
+        await this.setStateAsync("alarm.outputsActive", { val: false, ack: true });
+      }, durationSec * 1000);
+    }
+  }
+
+  private async handleSilentEvent(
+    sensor: SmarthomeAlarmConfig["sensors"][number],
+  ): Promise<void> {
+    await this.updateLastEvent("silent_trigger", sensor);
+    await this.setStateAsync("alarm.silentEvent", { val: true, ack: true });
+    await this.clearSilentEventTimer();
+    this.silentEventTimeout = setTimeout(async () => {
+      await this.setStateAsync("alarm.silentEvent", { val: false, ack: true });
+    }, 10_000);
+  }
+
+  private async updateLastEvent(
+    reason: string,
+    sensor?: SmarthomeAlarmConfig["sensors"][number],
+    mode?: ControlMode,
+  ): Promise<void> {
+    const triggerSensor = sensor?.name || sensor?.stateId || "";
+    const timestamp = new Date().toISOString();
+    await this.setStateAsync("last.triggerSensor", { val: triggerSensor, ack: true });
+    await this.setStateAsync("last.triggerTime", { val: timestamp, ack: true });
+    const reasonParts = [reason];
+    if (mode) {
+      reasonParts.push(mode);
+    }
+    await this.setStateAsync("last.reason", { val: reasonParts.join(":"), ack: true });
   }
 
   private async addTroubleSensor(sensorId: string): Promise<void> {
@@ -516,6 +758,10 @@ class SmarthomeAlarm extends utils.Adapter {
 
   private onUnload(callback: () => void): void {
     this.clearExitTimers()
+      .then(() => this.clearEntryTimers())
+      .then(() => this.clearPreAlarmTimer())
+      .then(() => this.clearAlarmDurationTimer())
+      .then(() => this.clearSilentEventTimer())
       .then(() => callback())
       .catch(() => callback());
   }
