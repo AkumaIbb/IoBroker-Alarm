@@ -9,7 +9,7 @@ export default defineConfig({
     outDir: 'build',
     emptyOutDir: true,
     rollupOptions: {
-      input: path.resolve(__dirname, 'index_m.html'),
+      input: path.resolve(__dirname, 'src', 'index_m.html'),
     },
   },
 });
