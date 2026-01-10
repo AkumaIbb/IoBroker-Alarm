@@ -50,7 +50,8 @@
     "autoBypassOpenOnArming": false,
     "useBaselineSnapshot": true,
     "debounceMsDefault": 500,
-    "sensors": []
+    "sensors": [],
+    "outputs": []
   },
   "objects": [],
   "instanceObjects": []

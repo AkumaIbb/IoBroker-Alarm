@@ -12,6 +12,8 @@ const CONTROL_MODE_VALUES = [
 
 type ControlMode = (typeof CONTROL_MODE_VALUES)[number];
 
+type OutputActiveIn = ControlMode | "beep";
+
 interface SmarthomeAlarmConfig {
   exitDelaySec: number;
   entryDelaySec: number;
@@ -31,7 +33,15 @@ interface SmarthomeAlarmConfig {
     bypass: boolean;
     debounceMs?: number;
   }>;
+  outputs?: Array<{
+    stateId: string;
+    name: string;
+    activeIn: OutputActiveIn[];
+    value?: boolean;
+  }>;
 }
+
+type OutputConfig = NonNullable<SmarthomeAlarmConfig["outputs"]>[number];
 
 class SmarthomeAlarm extends utils.Adapter {
   private exitTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -48,6 +58,9 @@ class SmarthomeAlarm extends utils.Adapter {
   private baselineSnapshot = new Map<string, boolean>();
   private runtimeBypass = new Set<string>();
   private initializingSensors = false;
+  private lastOutputValues = new Map<string, boolean>();
+  private beepInterval: ReturnType<typeof setInterval> | null = null;
+  private beepState = true;
 
   public constructor(options: Partial<utils.AdapterOptions> = {}) {
     super({
@@ -202,6 +215,14 @@ class SmarthomeAlarm extends utils.Adapter {
       def: "[]",
     }, "[]");
 
+    await this.ensureState("outputs.status", {
+      type: "string",
+      role: "json",
+      read: true,
+      write: false,
+      def: "{}",
+    }, "{}");
+
     await this.subscribeStatesAsync("control.*");
 
     await this.initializeSensors();
@@ -217,6 +238,8 @@ class SmarthomeAlarm extends utils.Adapter {
     if (config.exitDelaySec < 0) {
       this.log.warn("exitDelaySec is negative; forcing to 0");
     }
+
+    await this.updateOutputsForMode(await this.getControlMode());
   }
 
   private async onStateChange(id: string, state: ioBroker.State | null | undefined): Promise<void> {
@@ -257,7 +280,7 @@ class SmarthomeAlarm extends utils.Adapter {
       if (state.val === "disarmed") {
         await this.handleDisarm();
       } else if (CONTROL_MODE_VALUES.includes(state.val as ControlMode)) {
-        await this.setStateAsync("control.mode", { val: state.val, ack: true });
+        await this.setControlMode(state.val as ControlMode);
       } else {
         this.log.warn(`Unsupported mode value: ${state.val}`);
       }
@@ -280,7 +303,7 @@ class SmarthomeAlarm extends utils.Adapter {
     let bypassedSensors: string[] = [];
     if (openSensors.length > 0) {
       if (config.blockArmingIfOpen) {
-        await this.setStateAsync("control.mode", { val: "disarmed", ack: true });
+        await this.setControlMode("disarmed");
         await this.updateLastEvent("arming_blocked_open");
         await this.setStateAsync("arming.bypassedList", { val: "[]", ack: true });
         return;
@@ -295,7 +318,7 @@ class SmarthomeAlarm extends utils.Adapter {
     await this.setStateAsync("arming.bypassedList", { val: JSON.stringify(bypassedSensors), ack: true });
 
     await this.clearExitTimers();
-    await this.setStateAsync("control.mode", { val: "arming", ack: true });
+    await this.setControlMode("arming");
 
     if (delaySec === 0) {
       await this.finishArming(targetMode);
@@ -322,7 +345,7 @@ class SmarthomeAlarm extends utils.Adapter {
     if (config.useBaselineSnapshot) {
       await this.captureBaselineSnapshot();
     }
-    await this.setStateAsync("control.mode", { val: targetMode, ack: true });
+    await this.setControlMode(targetMode);
     await this.updateLastEvent("armed", undefined, targetMode);
   }
 
@@ -332,7 +355,7 @@ class SmarthomeAlarm extends utils.Adapter {
     await this.clearPreAlarmTimer();
     await this.clearAlarmDurationTimer();
     await this.clearSilentEventTimer();
-    await this.setStateAsync("control.mode", { val: "disarmed", ack: true });
+    await this.setControlMode("disarmed");
     await this.setStateAsync("timers.exitRemaining", { val: 0, ack: true });
     await this.setStateAsync("timers.entryRemaining", { val: 0, ack: true });
     await this.setStateAsync("alarm.active", { val: false, ack: true });
@@ -635,7 +658,7 @@ class SmarthomeAlarm extends utils.Adapter {
     const config = this.config as SmarthomeAlarmConfig;
     const delaySec = Math.max(0, config.entryDelaySec || 0);
     await this.clearEntryTimers();
-    await this.setStateAsync("control.mode", { val: "entry_delay", ack: true });
+    await this.setControlMode("entry_delay");
     await this.updateLastEvent("entry_delay", sensor);
 
     if (delaySec === 0) {
@@ -679,7 +702,7 @@ class SmarthomeAlarm extends utils.Adapter {
   ): Promise<void> {
     const config = this.config as SmarthomeAlarmConfig;
     await this.clearPreAlarmTimer();
-    await this.setStateAsync("control.mode", { val: "alarm_pre", ack: true });
+    await this.setControlMode("alarm_pre");
     await this.updateLastEvent(reason, sensor, "alarm_pre");
 
     const delaySec = Math.max(0, config.preAlarmSec || 0);
@@ -695,7 +718,7 @@ class SmarthomeAlarm extends utils.Adapter {
     const config = this.config as SmarthomeAlarmConfig;
     await this.clearPreAlarmTimer();
     await this.clearAlarmDurationTimer();
-    await this.setStateAsync("control.mode", { val: "alarm_full", ack: true });
+    await this.setControlMode("alarm_full");
     await this.setStateAsync("alarm.active", { val: true, ack: true });
     await this.setStateAsync("alarm.outputsActive", { val: true, ack: true });
     await this.updateLastEvent(reason, sensor, "alarm_full");
@@ -756,12 +779,90 @@ class SmarthomeAlarm extends utils.Adapter {
     await this.setStateAsync("trouble.active", { val: this.troubleSensors.size > 0, ack: true });
   }
 
+  private async setControlMode(mode: ControlMode): Promise<void> {
+    await this.setStateAsync("control.mode", { val: mode, ack: true });
+    await this.updateOutputsForMode(mode);
+  }
+
+  private async updateOutputsForMode(mode: ControlMode): Promise<void> {
+    const outputs = (this.config as SmarthomeAlarmConfig).outputs ?? [];
+    await this.stopBeepPattern();
+    this.lastOutputValues.clear();
+
+    for (const output of outputs) {
+      if (!output.stateId) {
+        continue;
+      }
+      const activeValue = output.value ?? true;
+      const isBeepOutput = output.activeIn?.includes("beep");
+      if ((mode === "entry_delay" || mode === "arming") && isBeepOutput) {
+        await this.setOutputValue(output.stateId, activeValue);
+        continue;
+      }
+
+      const isActive = output.activeIn?.includes(mode);
+      const targetValue = isActive ? activeValue : !activeValue;
+      await this.setOutputValue(output.stateId, targetValue);
+    }
+
+    await this.updateOutputsStatus();
+
+    const beepOutputs = outputs.filter((output) => output.stateId && output.activeIn?.includes("beep"));
+    if ((mode === "entry_delay" || mode === "arming") && beepOutputs.length > 0) {
+      await this.startBeepPattern(beepOutputs);
+    }
+  }
+
+  private async setOutputValue(stateId: string, value: boolean): Promise<void> {
+    await this.setForeignStateAsync(stateId, { val: value, ack: true });
+    this.lastOutputValues.set(stateId, value);
+  }
+
+  private async updateOutputsStatus(): Promise<void> {
+    await this.setStateAsync("outputs.status", {
+      val: JSON.stringify(Object.fromEntries(this.lastOutputValues)),
+      ack: true,
+    });
+  }
+
+  private async startBeepPattern(outputs: OutputConfig[]): Promise<void> {
+    if (outputs.length === 0) {
+      return;
+    }
+    this.beepState = true;
+    await this.applyBeepPattern(outputs);
+    this.beepInterval = setInterval(() => {
+      this.beepState = !this.beepState;
+      void this.applyBeepPattern(outputs);
+    }, 1000);
+  }
+
+  private async applyBeepPattern(outputs: OutputConfig[]): Promise<void> {
+    for (const output of outputs) {
+      if (!output?.stateId) {
+        continue;
+      }
+      const activeValue = output.value ?? true;
+      const targetValue = this.beepState ? activeValue : !activeValue;
+      await this.setOutputValue(output.stateId, targetValue);
+    }
+    await this.updateOutputsStatus();
+  }
+
+  private async stopBeepPattern(): Promise<void> {
+    if (this.beepInterval) {
+      clearInterval(this.beepInterval);
+      this.beepInterval = null;
+    }
+  }
+
   private onUnload(callback: () => void): void {
     this.clearExitTimers()
       .then(() => this.clearEntryTimers())
       .then(() => this.clearPreAlarmTimer())
       .then(() => this.clearAlarmDurationTimer())
       .then(() => this.clearSilentEventTimer())
+      .then(() => this.stopBeepPattern())
       .then(() => callback())
       .catch(() => callback());
   }
