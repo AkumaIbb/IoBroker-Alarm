@@ -1,0 +1,57 @@
+{
+  "common": {
+    "name": "smarthome-alarm",
+    "version": "0.0.1",
+    "news": {
+      "0.0.1": {
+        "en": "Initial adapter scaffold",
+        "de": "Initiales Adapter-Gerüst"
+      }
+    },
+    "title": "Smarthome Alarm",
+    "titleLang": {
+      "en": "Smarthome Alarm",
+      "de": "Smarthome Alarm"
+    },
+    "desc": {
+      "en": "Smarthome alarm logic adapter",
+      "de": "Smarthome Alarm-Logik Adapter"
+    },
+    "authors": [
+      ""
+    ],
+    "keywords": [
+      "alarm",
+      "security",
+      "smarthome"
+    ],
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "mode": "daemon",
+    "messagebox": false,
+    "enabled": true,
+    "extIcon": "",
+    "icon": "",
+    "materialize": true,
+    "compact": true,
+    "type": "security",
+    "connectionType": "local",
+    "dataSource": "poll",
+    "adminUI": {
+      "config": "json"
+    }
+  },
+  "native": {
+    "exitDelaySec": 30,
+    "entryDelaySec": 60,
+    "preAlarmSec": 0,
+    "alarmDurationSec": 180,
+    "blockArmingIfOpen": false,
+    "autoBypassOpenOnArming": false,
+    "useBaselineSnapshot": true,
+    "debounceMsDefault": 500,
+    "sensors": []
+  },
+  "objects": [],
+  "instanceObjects": []
+}

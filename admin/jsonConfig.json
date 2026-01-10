@@ -1,0 +1,150 @@
+{
+  "i18n": true,
+  "type": "panel",
+  "items": {
+    "exitDelaySec": {
+      "type": "number",
+      "label": "Exit delay (sec)",
+      "min": 0,
+      "step": 1,
+      "sm": 6,
+      "md": 6,
+      "default": 30
+    },
+    "entryDelaySec": {
+      "type": "number",
+      "label": "Entry delay (sec)",
+      "min": 0,
+      "step": 1,
+      "sm": 6,
+      "md": 6,
+      "default": 60
+    },
+    "preAlarmSec": {
+      "type": "number",
+      "label": "Pre-alarm (sec)",
+      "min": 0,
+      "step": 1,
+      "sm": 6,
+      "md": 6,
+      "default": 0
+    },
+    "alarmDurationSec": {
+      "type": "number",
+      "label": "Alarm duration (sec)",
+      "min": 0,
+      "step": 1,
+      "sm": 6,
+      "md": 6,
+      "default": 180
+    },
+    "blockArmingIfOpen": {
+      "type": "checkbox",
+      "label": "Block arming if open",
+      "sm": 6,
+      "md": 6,
+      "default": false
+    },
+    "autoBypassOpenOnArming": {
+      "type": "checkbox",
+      "label": "Auto-bypass open sensors on arming",
+      "sm": 6,
+      "md": 6,
+      "default": false
+    },
+    "useBaselineSnapshot": {
+      "type": "checkbox",
+      "label": "Use baseline snapshot",
+      "sm": 6,
+      "md": 6,
+      "default": true
+    },
+    "debounceMsDefault": {
+      "type": "number",
+      "label": "Default debounce (ms)",
+      "min": 0,
+      "step": 10,
+      "sm": 6,
+      "md": 6,
+      "default": 500
+    },
+    "sensors": {
+      "type": "table",
+      "label": "Sensors",
+      "items": [
+        {
+          "label": "State ID",
+          "name": "stateId",
+          "type": "text"
+        },
+        {
+          "label": "Name",
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "label": "Role",
+          "name": "role",
+          "type": "select",
+          "options": [
+            {
+              "label": "Perimeter",
+              "value": "perimeter"
+            },
+            {
+              "label": "Entry",
+              "value": "entry"
+            },
+            {
+              "label": "Interior",
+              "value": "interior"
+            },
+            {
+              "label": "24h",
+              "value": "24h"
+            }
+          ]
+        },
+        {
+          "label": "Invert",
+          "name": "invert",
+          "type": "checkbox"
+        },
+        {
+          "label": "Trigger value",
+          "name": "triggerValue",
+          "type": "checkbox"
+        },
+        {
+          "label": "Policy",
+          "name": "policy",
+          "type": "select",
+          "options": [
+            {
+              "label": "Instant",
+              "value": "instant"
+            },
+            {
+              "label": "Entry delay",
+              "value": "entryDelay"
+            },
+            {
+              "label": "Silent",
+              "value": "silent"
+            }
+          ]
+        },
+        {
+          "label": "Bypass",
+          "name": "bypass",
+          "type": "checkbox"
+        },
+        {
+          "label": "Debounce (ms)",
+          "name": "debounceMs",
+          "type": "number"
+        }
+      ]
+    }
+  }
+}
