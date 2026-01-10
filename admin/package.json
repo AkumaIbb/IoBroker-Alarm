@@ -10,7 +10,7 @@
   "dependencies": {
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
-    "@iobroker/adapter-react-v5": "^8.0.0",
+    "@iobroker/adapter-react-v5": "7.6.1",
     "@mui/icons-material": "^5.15.14",
     "@mui/material": "^5.15.14",
     "react": "^18.2.0",
@@ -20,8 +20,8 @@
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.4.5",
-    "vite": "^5.2.10"
+    "vite": "^5.4.21"
   }
 }
