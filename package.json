@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:admin": "npm --prefix admin run build",
     "watch": "tsc -p tsconfig.json --watch",
     "test": "echo \"No tests specified\""
   },
