@@ -145,6 +145,56 @@
           "type": "number"
         }
       ]
+    },
+    "outputs": {
+      "type": "table",
+      "label": "Outputs",
+      "items": [
+        {
+          "label": "State ID",
+          "name": "stateId",
+          "type": "text"
+        },
+        {
+          "label": "Name",
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "label": "Active in",
+          "name": "activeIn",
+          "type": "select",
+          "multiple": true,
+          "options": [
+            {
+              "label": "Arming",
+              "value": "arming"
+            },
+            {
+              "label": "Entry delay",
+              "value": "entry_delay"
+            },
+            {
+              "label": "Alarm pre",
+              "value": "alarm_pre"
+            },
+            {
+              "label": "Alarm full",
+              "value": "alarm_full"
+            },
+            {
+              "label": "Beep",
+              "value": "beep"
+            }
+          ]
+        },
+        {
+          "label": "Value",
+          "name": "value",
+          "type": "checkbox",
+          "default": true
+        }
+      ]
     }
   }
 }
