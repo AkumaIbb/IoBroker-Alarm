@@ -1,0 +1,22 @@
+{
+  "i18n": true,
+  "type": "panel",
+  "items": {
+    "_header": {
+      "type": "header",
+      "text": "Smarthome Alarm"
+    },
+    "exitDelaySec": {
+      "type": "number",
+      "label": "Exit delay (sec)",
+      "min": 0,
+      "max": 600
+    },
+    "entryDelaySec": {
+      "type": "number",
+      "label": "Entry delay (sec)",
+      "min": 0,
+      "max": 600
+    }
+  }
+}
