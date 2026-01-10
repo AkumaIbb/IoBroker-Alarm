@@ -10,21 +10,22 @@ import {
   Paper,
   Tab,
   Tabs,
+  TextField,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
-  ConfigGenericApp,
+  GenericApp,
   I18n,
   Utils,
   DialogSelectID,
-  type ConfigGenericAppProps,
-  type ConfigGenericAppState,
+  type GenericAppProps,
+  type GenericAppState,
 } from '@iobroker/adapter-react-v5';
 import SensorsTable from './components/SensorsTable';
 import type { NativeConfig, SensorConfig } from './types';
 
-type AppState = ConfigGenericAppState & {
+type AppState = GenericAppState & {
   activeTab: number;
   sensorErrors: string[];
   selectDialogIndex: number | null;
@@ -34,8 +35,8 @@ type AppState = ConfigGenericAppState & {
 const roleOptions = ['perimeter', 'entry', 'interior', '24h'] as const;
 const policyOptions = ['instant', 'entryDelay', 'silent'] as const;
 
-class App extends ConfigGenericApp<ConfigGenericAppProps, AppState> {
-  constructor(props: ConfigGenericAppProps) {
+class App extends GenericApp<GenericAppProps, AppState> {
+  constructor(props: GenericAppProps) {
     super(props, {
       adapterName: 'smarthome-alarm',
     });
@@ -49,7 +50,7 @@ class App extends ConfigGenericApp<ConfigGenericAppProps, AppState> {
     };
   }
 
-  componentDidUpdate(prevProps: ConfigGenericAppProps, prevState: AppState): void {
+  componentDidUpdate(prevProps: GenericAppProps, prevState: AppState): void {
     if (this.state.loaded && !prevState.loaded) {
       const native = this.getNative();
       if (native) {
@@ -193,13 +194,12 @@ class App extends ConfigGenericApp<ConfigGenericAppProps, AppState> {
       return;
     }
 
-    const socket = (this as unknown as { socket?: { getObject: (id: string) => Promise<any> } }).socket;
-    if (!socket?.getObject) {
+    if (!this.socket?.getObject) {
       return;
     }
 
     try {
-      const obj = await socket.getObject(stateId);
+      const obj = await this.socket.getObject(stateId);
       const name = Utils.getObjectName(obj, I18n.getLanguage());
       if (name) {
         sensors[index] = {
