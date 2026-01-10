@@ -79,6 +79,7 @@ class SmarthomeAlarm extends utils.Adapter {
     const config = this.config as SmarthomeAlarmConfig;
 
     await this.ensureState("control.mode", {
+      name: { de: "Modus", en: "Mode" },
       type: "string",
       role: "state",
       read: true,
@@ -88,6 +89,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "disarmed");
 
     await this.ensureState("control.armFull", {
+      name: { de: "Voll scharfschalten", en: "Arm full" },
       type: "boolean",
       role: "button",
       read: true,
@@ -96,6 +98,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("control.armPerimeter", {
+      name: { de: "Teilscharf schalten", en: "Arm perimeter" },
       type: "boolean",
       role: "button",
       read: true,
@@ -104,6 +107,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("control.disarm", {
+      name: { de: "Unscharf schalten", en: "Disarm" },
       type: "boolean",
       role: "button",
       read: true,
@@ -112,6 +116,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("alarm.active", {
+      name: { de: "Alarm aktiv", en: "Alarm active" },
       type: "boolean",
       role: "indicator.alarm",
       read: true,
@@ -120,6 +125,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("alarm.outputsActive", {
+      name: { de: "Alarm-Ausgänge aktiv", en: "Alarm outputs active" },
       type: "boolean",
       role: "indicator.alarm",
       read: true,
@@ -128,6 +134,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("alarm.silenced", {
+      name: { de: "Alarm stumm", en: "Alarm silenced" },
       type: "boolean",
       role: "switch",
       read: true,
@@ -136,6 +143,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("alarm.silentEvent", {
+      name: { de: "Stilles Ereignis", en: "Silent event" },
       type: "boolean",
       role: "indicator",
       read: true,
@@ -144,6 +152,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("timers.exitRemaining", {
+      name: { de: "Verbleibende Ausgangszeit", en: "Exit time remaining" },
       type: "number",
       role: "value.interval",
       read: true,
@@ -153,6 +162,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, 0);
 
     await this.ensureState("timers.entryRemaining", {
+      name: { de: "Verbleibende Eintrittszeit", en: "Entry time remaining" },
       type: "number",
       role: "value.interval",
       read: true,
@@ -162,6 +172,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, 0);
 
     await this.ensureState("last.triggerSensor", {
+      name: { de: "Letzter Auslösesensor", en: "Last trigger sensor" },
       type: "string",
       role: "text",
       read: true,
@@ -170,6 +181,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "");
 
     await this.ensureState("last.triggerTime", {
+      name: { de: "Letzter Auslösezeitpunkt", en: "Last trigger time" },
       type: "string",
       role: "text",
       read: true,
@@ -178,6 +190,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "");
 
     await this.ensureState("last.reason", {
+      name: { de: "Letzter Grund", en: "Last reason" },
       type: "string",
       role: "text",
       read: true,
@@ -186,6 +199,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "");
 
     await this.ensureState("trouble.active", {
+      name: { de: "Störung aktiv", en: "Trouble active" },
       type: "boolean",
       role: "indicator.maintenance",
       read: true,
@@ -194,6 +208,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, false);
 
     await this.ensureState("trouble.list", {
+      name: { de: "Störungsliste", en: "Trouble list" },
       type: "string",
       role: "json",
       read: true,
@@ -202,6 +217,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "[]");
 
     await this.ensureState("arming.openList", {
+      name: { de: "Offene Sensoren", en: "Open sensors" },
       type: "string",
       role: "json",
       read: true,
@@ -210,6 +226,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "[]");
 
     await this.ensureState("arming.bypassedList", {
+      name: { de: "Bypass-Sensoren", en: "Bypassed sensors" },
       type: "string",
       role: "json",
       read: true,
@@ -218,6 +235,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "[]");
 
     await this.ensureState("outputs.status", {
+      name: { de: "Ausgangsstatus", en: "Outputs status" },
       type: "string",
       role: "json",
       read: true,
@@ -226,6 +244,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "{}");
 
     await this.ensureState("events.last", {
+      name: { de: "Letztes Ereignis", en: "Last event" },
       type: "string",
       role: "json",
       read: true,
@@ -234,6 +253,7 @@ class SmarthomeAlarm extends utils.Adapter {
     }, "{}");
 
     await this.ensureState("events.counter", {
+      name: { de: "Ereigniszähler", en: "Event counter" },
       type: "number",
       role: "value",
       read: true,
