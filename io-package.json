@@ -38,12 +38,13 @@
     "connectionType": "local",
     "dataSource": "poll",
     "adminUI": {
-      "config": "json"
+      "config": "materialize"
     }
   },
   "native": {
     "exitDelaySec": 30,
     "entryDelaySec": 60,
+    "chirpSec": 0,
     "preAlarmSec": 0,
     "alarmDurationSec": 180,
     "blockArmingIfOpen": false,
