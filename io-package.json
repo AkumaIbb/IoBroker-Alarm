@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "smarthome-alarm",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "news": {
       "0.0.1": {
         "en": "Initial adapter scaffold",
