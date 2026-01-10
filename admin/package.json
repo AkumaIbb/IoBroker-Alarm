@@ -1,11 +1,11 @@
 {
   "name": "iobroker.smarthome-alarm-admin",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "private": true,
   "description": "Admin UI for smarthome-alarm",
   "scripts": {
     "start": "vite",
-    "build": "vite build && node ./scripts/copy-index-m.js"
+    "build": "vite build"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",

@@ -1,6 +1,6 @@
 {
   "name": "iobroker.smarthome-alarm",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "ioBroker adapter providing smarthome alarm logic",
   "author": "",
   "homepage": "https://www.iobroker.net",
