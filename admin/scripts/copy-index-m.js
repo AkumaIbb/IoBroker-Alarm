@@ -1,23 +1,35 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const buildDir = path.resolve(__dirname, '..', 'build');
-const buildIndex = path.join(buildDir, 'index_m.html');
-const buildAssets = path.join(buildDir, 'assets');
-const targetIndex = path.resolve(__dirname, '..', 'index_m.html');
-const targetAssets = path.resolve(__dirname, '..', 'assets');
+const adminDir = path.resolve(__dirname, '..');
 
-if (!fs.existsSync(buildIndex)) {
-  throw new Error(`Missing build output: ${buildIndex}`);
+const indexCandidates = [
+  path.join(adminDir, 'build', 'index_m.html'),
+  path.join(adminDir, 'build', 'src', 'index_m.html'),
+];
+
+const assetsCandidates = [
+  path.join(adminDir, 'build', 'assets'),
+  path.join(adminDir, 'build', 'src', 'assets'),
+];
+
+const buildIndex = indexCandidates.find(p => fs.existsSync(p));
+const buildAssets = assetsCandidates.find(p => fs.existsSync(p));
+
+const targetIndex = path.join(adminDir, 'index_m.html');
+const targetAssets = path.join(adminDir, 'assets');
+
+if (!buildIndex) {
+  throw new Error(`Missing build output. Tried:\n- ${indexCandidates.join('\n- ')}`);
 }
-
 fs.copyFileSync(buildIndex, targetIndex);
 console.log(`Copied ${buildIndex} -> ${targetIndex}`);
 
-if (!fs.existsSync(buildAssets)) {
-  throw new Error(`Missing build assets: ${buildAssets}`);
+if (!buildAssets) {
+  throw new Error(`Missing build assets. Tried:\n- ${assetsCandidates.join('\n- ')}`);
 }
 
+// ab hier läuft dein bestehender Code weiter:
 fs.rmSync(targetAssets, { recursive: true, force: true });
 fs.mkdirSync(targetAssets, { recursive: true });
 
