@@ -26,7 +26,7 @@
   "sensor_type_other": "Other",
   "guideline_perimeter": "Perimeter",
   "guideline_entry": "Entry",
-  "guideline_all": "All",
+  "guideline_all": "Inner",
   "State ID is required": "State ID is required",
   "Duplicate State ID": "Duplicate State ID",
   "Select state": "Select state",

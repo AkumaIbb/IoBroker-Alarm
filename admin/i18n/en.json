@@ -24,7 +24,7 @@
   "label_debounceMsOverride": "Debounce override (ms)",
   "guideline_perimeter": "Perimeter",
   "guideline_entry": "Entry",
-  "guideline_all": "All",
+  "guideline_all": "Inner",
   "sensor_type_window": "Window contact",
   "sensor_type_motion": "Motion",
   "sensor_type_door": "Door contact",
