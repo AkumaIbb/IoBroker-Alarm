@@ -10,7 +10,7 @@
    npm i https://github.com/AkumaIbb/IoBroker-Alarm/tarball/main
    ```
 
-2. Dateien in ioBroker hochladen:
+2. Instanz in IoBroker aktivieren:
 
    ```bash
    iobroker upload smarthome-alarm
