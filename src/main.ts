@@ -984,14 +984,15 @@ class SmarthomeAlarm extends utils.Adapter {
       }
       const state = await this.getForeignStateAsync(stateId);
       const normalized = state ? this.normalizeSensorValue(state.val, sensor) : null;
+      const sensorName = sensor.name ?? stateId;
       if (normalized === null) {
         await this.addTroubleSensor(stateId);
-        stateList.push({ id: stateId, name: sensor.name, state: null });
+        stateList.push({ id: stateId, name: sensorName, state: null });
         continue;
       }
       await this.removeTroubleSensor(stateId);
       this.armingStateSnapshot.set(stateId, normalized);
-      stateList.push({ id: stateId, name: sensor.name, state: normalized });
+      stateList.push({ id: stateId, name: sensorName, state: normalized });
     }
     await this.setStateAsync("arming.stateList", { val: JSON.stringify(stateList), ack: true });
   }
