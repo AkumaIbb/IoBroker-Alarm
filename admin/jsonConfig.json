@@ -51,16 +51,18 @@
           "type": "table",
           "label": "section_sensors",
           "newLine": true,
-          "items": {
-            "name": { "type": "text", "title": "label_name" },
+          "items": [
+            { "attr": "name", "type": "text", "title": "label_name" },
 
-            "id": {
+            {
+              "attr": "id",
               "type": "objectId",
               "title": "label_stateId",
               "filter": "state"
             },
 
-            "type": {
+            {
+              "attr": "type",
               "type": "select",
               "title": "label_sensorType",
               "default": "window",
@@ -72,7 +74,8 @@
               ]
             },
 
-            "guideline": {
+            {
+              "attr": "guideline",
               "type": "select",
               "title": "label_guideline",
               "default": "all",
@@ -83,7 +86,8 @@
               ]
             },
 
-            "debounceMs": {
+            {
+              "attr": "debounceMs",
               "type": "number",
               "title": "label_debounceMsOverride",
               "min": 0,
@@ -91,24 +95,26 @@
               "allowEmpty": true
             },
 
-            "invert": { "type": "checkbox", "title": "label_invert", "default": false }
-          }
+            { "attr": "invert", "type": "checkbox", "title": "label_invert", "default": false }
+          ]
         },
 
         "outputs": {
           "type": "table",
           "label": "section_outputs",
           "newLine": true,
-          "items": {
-            "name": { "type": "text", "title": "label_name" },
+          "items": [
+            { "attr": "name", "type": "text", "title": "label_name" },
 
-            "id": {
+            {
+              "attr": "id",
               "type": "objectId",
               "title": "label_actorStateId",
               "filter": "state"
             },
 
-            "type": {
+            {
+              "attr": "type",
               "type": "select",
               "title": "label_outputType",
               "default": "siren",
@@ -120,9 +126,9 @@
               ]
             },
 
-            "activeValue": { "type": "text", "title": "label_activeValue", "default": "true" },
-            "inactiveValue": { "type": "text", "title": "label_inactiveValue", "default": "false" }
-          }
+            { "attr": "activeValue", "type": "text", "title": "label_activeValue", "default": "true" },
+            { "attr": "inactiveValue", "type": "text", "title": "label_inactiveValue", "default": "false" }
+          ]
         }
       }
     }
