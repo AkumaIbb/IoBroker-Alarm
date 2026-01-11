@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "smarthome-alarm",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "news": {
+      "0.0.5": {
+        "en": "Alarm modes established.",
+        "de": "Alarm-Modi aktiviert und überholt."
+      },
       "0.0.4": {
         "en": "Expand jsonConfig and admin translations",
         "de": "jsonConfig und Admin-Übersetzungen erweitert"
