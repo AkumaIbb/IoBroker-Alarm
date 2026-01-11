@@ -43,8 +43,10 @@ const CONTROL_MODE_VALUES = [
     "alarm_pre",
     "alarm_full",
 ];
+const SENSOR_TYPE_VALUES = ["window", "motion", "door", "other"];
 const SENSOR_MODE_MASK_VALUES = ["perimeter", "full"];
 const SENSOR_POLICY_VALUES = ["instant", "silent", "entryDelay"];
+const SENSOR_GUIDELINE_VALUES = ["perimeter", "entry", "all"];
 class SmarthomeAlarm extends utils.Adapter {
     constructor(options = {}) {
         super({
@@ -461,6 +463,46 @@ class SmarthomeAlarm extends utils.Adapter {
         }
         return "instant";
     }
+    normalizeSensorType(value) {
+        if (SENSOR_TYPE_VALUES.includes(value)) {
+            return value;
+        }
+        if (value === "contact") {
+            return "window";
+        }
+        if (value === "vibration" || value === "custom") {
+            return "other";
+        }
+        return "other";
+    }
+    normalizeSensorGuideline(value) {
+        if (SENSOR_GUIDELINE_VALUES.includes(value)) {
+            return value;
+        }
+        return "all";
+    }
+    resolveSensorGuideline(sensor) {
+        if (sensor.guideline) {
+            const guideline = this.normalizeSensorGuideline(sensor.guideline);
+            if (guideline === "entry") {
+                return { guideline, policy: "entryDelay", modeMask: ["perimeter", "full"] };
+            }
+            if (guideline === "perimeter") {
+                return { guideline, policy: "instant", modeMask: ["perimeter", "full"] };
+            }
+            return { guideline, policy: "instant", modeMask: ["full"] };
+        }
+        const policy = this.normalizeSensorPolicy(sensor.policy);
+        const modeMask = this.normalizeModeMask(sensor.modeMask);
+        let guideline = "all";
+        if (policy === "entryDelay") {
+            guideline = "entry";
+        }
+        else if (modeMask.includes("perimeter")) {
+            guideline = "perimeter";
+        }
+        return { guideline, policy, modeMask };
+    }
     normalizeModeMask(value) {
         if (!Array.isArray(value)) {
             return ["perimeter", "full"];
@@ -491,18 +533,21 @@ class SmarthomeAlarm extends utils.Adapter {
         const outputs = Array.isArray(config.outputs) ? config.outputs : [];
         let configured = true;
         this.configuredSensors = sensors.flatMap((sensor, index) => {
-            if (!sensor?.id) {
+            const sensorId = sensor?.id || sensor?.stateId;
+            if (!sensorId) {
                 this.log.warn(`Sensor entry ${index + 1} is missing an id.`);
                 configured = false;
                 return [];
             }
-            const modeMask = this.normalizeModeMask(sensor.modeMask);
-            const policy = this.normalizeSensorPolicy(sensor.policy);
+            const { guideline, policy, modeMask } = this.resolveSensorGuideline(sensor);
+            const type = this.normalizeSensorType(sensor.type);
             return [{
                     ...sensor,
-                    name: sensor.name || sensor.id,
-                    stateId: sensor.id,
+                    type,
+                    name: sensor.name || sensorId,
+                    stateId: sensorId,
                     triggerValue: true,
+                    guideline,
                     policy,
                     modeMask,
                 }];
@@ -609,6 +654,14 @@ class SmarthomeAlarm extends utils.Adapter {
                 write: false,
                 def: "",
             }, "");
+            await this.ensureState(`${channelId}.guideline`, {
+                name: { de: "Richtlinie", en: "Guideline" },
+                type: "string",
+                role: "text",
+                read: true,
+                write: false,
+                def: "",
+            }, "");
             await this.ensureState(`${channelId}.invert`, {
                 name: { de: "Invertiert", en: "Inverted" },
                 type: "boolean",
@@ -643,6 +696,7 @@ class SmarthomeAlarm extends utils.Adapter {
             }, "[]");
             await this.setStateAsync(`${channelId}.id`, { val: sensor.stateId, ack: true });
             await this.setStateAsync(`${channelId}.type`, { val: sensor.type, ack: true });
+            await this.setStateAsync(`${channelId}.guideline`, { val: sensor.guideline, ack: true });
             await this.setStateAsync(`${channelId}.invert`, { val: sensor.invert ?? false, ack: true });
             await this.setStateAsync(`${channelId}.debounceMs`, { val: sensor.debounceMs ?? 0, ack: true });
             await this.setStateAsync(`${channelId}.bypassable`, { val: sensor.bypassable ?? false, ack: true });
