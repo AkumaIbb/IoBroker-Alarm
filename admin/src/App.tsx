@@ -23,7 +23,7 @@ import {
   type GenericAppState,
 } from '@iobroker/adapter-react-v5';
 import SensorsTable from './components/SensorsTable';
-import type { NativeConfig, SensorConfig } from './types';
+import type { NativeConfig, SensorConfig, SensorGuideline, SensorType } from './types';
 
 type AppState = GenericAppState & {
   activeTab: number;
@@ -32,8 +32,8 @@ type AppState = GenericAppState & {
   isSaveDisabled: boolean;
 };
 
-const roleOptions = ['perimeter', 'entry', 'interior', '24h'] as const;
-const policyOptions = ['instant', 'entryDelay', 'silent'] as const;
+const sensorTypeOptions = ['window', 'motion', 'door', 'other'] as const;
+const guidelineOptions = ['perimeter', 'entry', 'all'] as const;
 
 class App extends GenericApp<GenericAppProps, AppState> {
   constructor(props: GenericAppProps) {
@@ -96,8 +96,8 @@ class App extends GenericApp<GenericAppProps, AppState> {
 
     this.updateNativeValue('sensors', sensors);
 
-    if (patch.stateId) {
-      void this.applyAutoName(index, patch.stateId);
+    if (patch.id) {
+      void this.applyAutoName(index, patch.id);
     }
   }
 
@@ -109,13 +109,11 @@ class App extends GenericApp<GenericAppProps, AppState> {
 
     const sensors = native.sensors ? [...native.sensors] : [];
     const newSensor: SensorConfig = {
-      stateId: '',
+      id: '',
       name: '',
-      role: 'perimeter',
+      type: 'window',
+      guideline: 'all',
       invert: false,
-      triggerValue: true,
-      policy: 'instant',
-      bypass: false,
       debounceMs: undefined,
     };
 
@@ -161,7 +159,7 @@ class App extends GenericApp<GenericAppProps, AppState> {
   }
 
   private getSensorErrors(sensors: SensorConfig[]): string[] {
-    const trimmedIds = sensors.map((sensor) => sensor.stateId.trim());
+    const trimmedIds = sensors.map((sensor) => sensor.id.trim());
     const counts = new Map<string, number>();
     trimmedIds.forEach((id) => {
       if (!id) {
@@ -171,7 +169,7 @@ class App extends GenericApp<GenericAppProps, AppState> {
     });
 
     return sensors.map((sensor) => {
-      const trimmed = sensor.stateId.trim();
+      const trimmed = sensor.id.trim();
       if (!trimmed) {
         return I18n.t('State ID is required');
       }
@@ -214,7 +212,7 @@ class App extends GenericApp<GenericAppProps, AppState> {
   }
 
   private handleSelectStateId(index: number, stateId: string): void {
-    this.updateSensor(index, { stateId });
+    this.updateSensor(index, { id: stateId });
     void this.applyAutoName(index, stateId);
   }
 
@@ -351,8 +349,8 @@ class App extends GenericApp<GenericAppProps, AppState> {
         <SensorsTable
           sensors={native.sensors || []}
           errors={this.state.sensorErrors}
-          roleOptions={roleOptions}
-          policyOptions={policyOptions}
+          sensorTypeOptions={sensorTypeOptions}
+          guidelineOptions={guidelineOptions}
           onAdd={(index) => this.addSensor(index)}
           onDelete={(index) => this.deleteSensor(index)}
           onDuplicate={(index) => this.duplicateSensor(index)}
@@ -383,8 +381,8 @@ class App extends GenericApp<GenericAppProps, AppState> {
           indicatorColor="primary"
           textColor="primary"
         >
-          <Tab label={I18n.t('Global')} />
-          <Tab label={I18n.t('Sensors')} />
+          <Tab label={I18n.t('General')} />
+          <Tab label={I18n.t('Devices')} />
         </Tabs>
         {this.state.activeTab === 0 && this.renderGlobalTab(native)}
         {this.state.activeTab === 1 && this.renderSensorsTab(native)}
@@ -397,7 +395,7 @@ class App extends GenericApp<GenericAppProps, AppState> {
           open={this.state.selectDialogIndex !== null}
           selected={
             this.state.selectDialogIndex !== null
-              ? native.sensors[this.state.selectDialogIndex]?.stateId
+              ? native.sensors[this.state.selectDialogIndex]?.id
               : ''
           }
           showAllObjects={false}
