@@ -1,200 +1,149 @@
 {
   "i18n": true,
-  "type": "panel",
-  "items": {
-    "_header": {
-      "type": "header",
-      "text": "header_title"
-    },
-    "delays": {
+  "type": "tabs",
+  "items": [
+    {
       "type": "panel",
-      "label": "section_delays",
+      "label": "tab_general",
       "items": {
-        "exitDelaySec": {
-          "type": "number",
-          "label": "label_exitDelaySec",
-          "min": 0,
-          "max": 600
+        "_header": { "type": "header", "text": "header_title" },
+
+        "_info": {
+          "type": "staticText",
+          "text": "general_info"
         },
-        "entryDelaySec": {
-          "type": "number",
-          "label": "label_entryDelaySec",
-          "min": 0,
-          "max": 600
+
+        "delays": {
+          "type": "panel",
+          "label": "section_delays",
+          "items": {
+            "exitDelaySec": { "type": "number", "label": "label_exitDelaySec", "min": 0, "max": 600 },
+            "entryDelaySec": { "type": "number", "label": "label_entryDelaySec", "min": 0, "max": 600 },
+            "preAlarmSec": { "type": "number", "label": "label_preAlarmSec", "min": 0, "max": 600 },
+            "alarmDurationSec": { "type": "number", "label": "label_alarmDurationSec", "min": 0, "max": 3600 },
+            "chirpSec": { "type": "number", "label": "label_chirpSec", "min": 0, "max": 60 },
+            "debounceMsDefault": { "type": "number", "label": "label_debounceMsDefault", "min": 0, "max": 60000 }
+          }
         },
-        "preAlarmSec": {
-          "type": "number",
-          "label": "label_preAlarmSec",
-          "min": 0,
-          "max": 600
-        },
-        "alarmDurationSec": {
-          "type": "number",
-          "label": "label_alarmDurationSec",
-          "min": 0,
-          "max": 3600
-        },
-        "chirpSec": {
-          "type": "number",
-          "label": "label_chirpSec",
-          "min": 0,
-          "max": 60
-        },
-        "debounceMsDefault": {
-          "type": "number",
-          "label": "label_debounceMsDefault",
-          "min": 0,
-          "max": 60000
+
+        "behavior": {
+          "type": "panel",
+          "label": "section_behavior",
+          "items": {
+            "blockArmingIfOpen": { "type": "checkbox", "label": "label_blockArmingIfOpen" },
+            "autoBypassOpenOnArming": { "type": "checkbox", "label": "label_autoBypassOpenOnArming" },
+            "useBaselineSnapshot": { "type": "checkbox", "label": "label_useBaselineSnapshot" }
+          }
         }
       }
     },
-    "behavior": {
+
+    {
       "type": "panel",
-      "label": "section_behavior",
+      "label": "tab_devices",
       "items": {
-        "blockArmingIfOpen": {
-          "type": "checkbox",
-          "label": "label_blockArmingIfOpen"
+        "_devices_info": {
+          "type": "staticText",
+          "text": "devices_info"
         },
-        "autoBypassOpenOnArming": {
-          "type": "checkbox",
-          "label": "label_autoBypassOpenOnArming"
-        },
-        "useBaselineSnapshot": {
-          "type": "checkbox",
-          "label": "label_useBaselineSnapshot"
-        }
-      }
-    },
-    "sensors": {
-      "type": "table",
-      "label": "section_sensors",
-      "items": {
-        "name": {
-          "type": "text",
-          "title": "label_name"
-        },
-        "id": {
-          "type": "objectId",
-          "title": "label_stateId",
-          "filter": "state"
-        },
-        "type": {
-          "type": "select",
-          "title": "label_type",
-          "options": [
+
+        "sensors": {
+          "type": "table",
+          "label": "section_sensors",
+          "newLine": true,
+          "items": [
+            { "name": "name", "type": "text", "title": "label_name" },
+
             {
-              "value": "contact",
-              "label": "sensor_type_contact"
+              "name": "stateId",
+              "type": "objectId",
+              "title": "label_stateId",
+              "filter": "state"
             },
+
             {
-              "value": "motion",
-              "label": "sensor_type_motion"
+              "name": "type",
+              "type": "select",
+              "title": "label_sensorType",
+              "default": "contact",
+              "options": [
+                { "value": "contact", "label": "sensor_type_contact" },
+                { "value": "motion", "label": "sensor_type_motion" },
+                { "value": "vibration", "label": "sensor_type_vibration" },
+                { "value": "custom", "label": "sensor_type_custom" }
+              ]
             },
+
             {
-              "value": "vibration",
-              "label": "sensor_type_vibration"
+              "name": "policy",
+              "type": "select",
+              "title": "label_policy",
+              "default": "instant",
+              "options": [
+                { "value": "instant", "label": "policy_instant" },
+                { "value": "entryDelay", "label": "policy_entryDelay" },
+                { "value": "silent", "label": "policy_silent" }
+              ]
             },
+
+            { "name": "invert", "type": "checkbox", "title": "label_invert", "default": false },
+
             {
-              "value": "custom",
-              "label": "sensor_type_custom"
+              "name": "debounceMs",
+              "type": "number",
+              "title": "label_debounceMsOverride",
+              "min": 0,
+              "max": 60000,
+              "allowEmpty": true
+            },
+
+            { "name": "bypassable", "type": "checkbox", "title": "label_bypassable", "default": true },
+
+            {
+              "name": "modeMask",
+              "type": "multiselect",
+              "title": "label_modeMask",
+              "options": [
+                { "value": "perimeter", "label": "mode_perimeter" },
+                { "value": "full", "label": "mode_full" }
+              ],
+              "default": ["full", "perimeter"]
             }
           ]
         },
-        "policy": {
-          "type": "select",
-          "title": "label_policy",
-          "default": "instant",
-          "options": [
+
+        "outputs": {
+          "type": "table",
+          "label": "section_outputs",
+          "newLine": true,
+          "items": [
+            { "name": "name", "type": "text", "title": "label_name" },
+
             {
-              "value": "instant",
-              "label": "policy_instant"
+              "name": "stateId",
+              "type": "objectId",
+              "title": "label_actorStateId",
+              "filter": "state"
             },
+
             {
-              "value": "entryDelay",
-              "label": "policy_entryDelay"
+              "name": "type",
+              "type": "select",
+              "title": "label_outputType",
+              "default": "siren",
+              "options": [
+                { "value": "siren", "label": "output_type_siren" },
+                { "value": "light", "label": "output_type_light" },
+                { "value": "notification", "label": "output_type_notification" },
+                { "value": "custom", "label": "output_type_custom" }
+              ]
             },
-            {
-              "value": "silent",
-              "label": "policy_silent"
-            }
+
+            { "name": "activeValue", "type": "text", "title": "label_activeValue", "default": "true" },
+            { "name": "inactiveValue", "type": "text", "title": "label_inactiveValue", "default": "false" }
           ]
-        },
-        "invert": {
-          "type": "checkbox",
-          "title": "label_invert"
-        },
-        "debounceMs": {
-          "type": "number",
-          "title": "label_debounceMs",
-          "min": 0,
-          "max": 60000,
-          "allowEmpty": true
-        },
-        "bypassable": {
-          "type": "checkbox",
-          "title": "label_bypassable"
-        },
-        "modeMask": {
-          "type": "multiselect",
-          "title": "label_modeMask",
-          "options": [
-            {
-              "value": "perimeter",
-              "label": "mode_perimeter"
-            },
-            {
-              "value": "full",
-              "label": "mode_full"
-            }
-          ]
-        }
-      }
-    },
-    "outputs": {
-      "type": "table",
-      "label": "section_outputs",
-      "items": {
-        "name": {
-          "type": "text",
-          "title": "label_name"
-        },
-        "id": {
-          "type": "objectId",
-          "title": "label_stateId",
-          "filter": "state"
-        },
-        "type": {
-          "type": "select",
-          "title": "label_type",
-          "options": [
-            {
-              "value": "siren",
-              "label": "output_type_siren"
-            },
-            {
-              "value": "light",
-              "label": "output_type_light"
-            },
-            {
-              "value": "notification",
-              "label": "output_type_notification"
-            },
-            {
-              "value": "custom",
-              "label": "output_type_custom"
-            }
-          ]
-        },
-        "activeValue": {
-          "type": "text",
-          "title": "label_activeValue"
-        },
-        "inactiveValue": {
-          "type": "text",
-          "title": "label_inactiveValue"
         }
       }
     }
-  }
+  ]
 }
