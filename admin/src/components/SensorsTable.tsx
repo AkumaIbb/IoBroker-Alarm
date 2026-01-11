@@ -21,13 +21,13 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import { I18n } from '@iobroker/adapter-react-v5';
-import type { SensorConfig, SensorPolicy, SensorRole } from '../types';
+import type { SensorConfig, SensorGuideline, SensorType } from '../types';
 
 interface SensorsTableProps {
   sensors: SensorConfig[];
   errors: string[];
-  roleOptions: readonly SensorRole[];
-  policyOptions: readonly SensorPolicy[];
+  sensorTypeOptions: readonly SensorType[];
+  guidelineOptions: readonly SensorGuideline[];
   onAdd: (index?: number) => void;
   onDelete: (index: number) => void;
   onDuplicate: (index: number) => void;
@@ -38,8 +38,8 @@ interface SensorsTableProps {
 const SensorsTable: React.FC<SensorsTableProps> = ({
   sensors,
   errors,
-  roleOptions,
-  policyOptions,
+  sensorTypeOptions,
+  guidelineOptions,
   onAdd,
   onDelete,
   onDuplicate,
@@ -64,14 +64,12 @@ const SensorsTable: React.FC<SensorsTableProps> = ({
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>{I18n.t('State ID')}</TableCell>
             <TableCell>{I18n.t('Name')}</TableCell>
-            <TableCell>{I18n.t('Role')}</TableCell>
+            <TableCell>{I18n.t('State ID')}</TableCell>
+            <TableCell>{I18n.t('Sensor Type')}</TableCell>
+            <TableCell>{I18n.t('Guideline')}</TableCell>
+            <TableCell>{I18n.t('Debounce override (ms)')}</TableCell>
             <TableCell>{I18n.t('Invert')}</TableCell>
-            <TableCell>{I18n.t('Trigger value')}</TableCell>
-            <TableCell>{I18n.t('Policy')}</TableCell>
-            <TableCell>{I18n.t('Bypass')}</TableCell>
-            <TableCell>{I18n.t('Debounce (ms)')}</TableCell>
             <TableCell align="right">
               <IconButton color="primary" onClick={() => onAdd()}>
                 <AddIcon />
@@ -84,15 +82,23 @@ const SensorsTable: React.FC<SensorsTableProps> = ({
             const error = errors[index];
             return (
               <TableRow key={`sensor-${index}`}>
+                <TableCell sx={{ minWidth: 160 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    value={sensor.name}
+                    onChange={(e) => onUpdateSensor(index, { name: e.target.value })}
+                  />
+                </TableCell>
                 <TableCell sx={{ minWidth: 240 }}>
                   <Tooltip title={error || ''} disableHoverListener={!error}>
                     <TextField
                       fullWidth
                       size="small"
-                      value={sensor.stateId}
+                      value={sensor.id}
                       error={Boolean(error)}
                       placeholder="hm-rpc.0..."
-                      onChange={(e) => onUpdateSensor(index, { stateId: e.target.value })}
+                      onChange={(e) => onUpdateSensor(index, { id: e.target.value })}
                       InputProps={{
                         endAdornment: (
                           <InputAdornment position="end">
@@ -105,45 +111,19 @@ const SensorsTable: React.FC<SensorsTableProps> = ({
                     />
                   </Tooltip>
                 </TableCell>
-                <TableCell sx={{ minWidth: 160 }}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={sensor.name}
-                    onChange={(e) => onUpdateSensor(index, { name: e.target.value })}
-                  />
-                </TableCell>
                 <TableCell sx={{ minWidth: 150 }}>
                   <TextField
                     select
                     fullWidth
                     size="small"
-                    value={sensor.role}
-                    onChange={(e) => onUpdateSensor(index, { role: e.target.value as SensorRole })}
+                    value={sensor.type}
+                    onChange={(e) => onUpdateSensor(index, { type: e.target.value as SensorType })}
                   >
-                    {roleOptions.map((role) => (
-                      <MenuItem key={role} value={role}>
-                        {role}
+                    {sensorTypeOptions.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {I18n.t(`sensor_type_${type}`)}
                       </MenuItem>
                     ))}
-                  </TextField>
-                </TableCell>
-                <TableCell align="center">
-                  <Checkbox
-                    checked={sensor.invert}
-                    onChange={(e) => onUpdateSensor(index, { invert: e.target.checked })}
-                  />
-                </TableCell>
-                <TableCell sx={{ minWidth: 130 }}>
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
-                    value={sensor.triggerValue ? 'true' : 'false'}
-                    onChange={(e) => onUpdateSensor(index, { triggerValue: e.target.value === 'true' })}
-                  >
-                    <MenuItem value="true">true</MenuItem>
-                    <MenuItem value="false">false</MenuItem>
                   </TextField>
                 </TableCell>
                 <TableCell sx={{ minWidth: 140 }}>
@@ -151,21 +131,15 @@ const SensorsTable: React.FC<SensorsTableProps> = ({
                     select
                     fullWidth
                     size="small"
-                    value={sensor.policy}
-                    onChange={(e) => onUpdateSensor(index, { policy: e.target.value as SensorPolicy })}
+                    value={sensor.guideline}
+                    onChange={(e) => onUpdateSensor(index, { guideline: e.target.value as SensorGuideline })}
                   >
-                    {policyOptions.map((policy) => (
-                      <MenuItem key={policy} value={policy}>
-                        {policy}
+                    {guidelineOptions.map((guideline) => (
+                      <MenuItem key={guideline} value={guideline}>
+                        {I18n.t(`guideline_${guideline}`)}
                       </MenuItem>
                     ))}
                   </TextField>
-                </TableCell>
-                <TableCell align="center">
-                  <Checkbox
-                    checked={sensor.bypass}
-                    onChange={(e) => onUpdateSensor(index, { bypass: e.target.checked })}
-                  />
                 </TableCell>
                 <TableCell sx={{ minWidth: 140 }}>
                   <TextField
@@ -180,6 +154,12 @@ const SensorsTable: React.FC<SensorsTableProps> = ({
                         debounceMs: value === '' ? undefined : Number(value),
                       });
                     }}
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  <Checkbox
+                    checked={sensor.invert}
+                    onChange={(e) => onUpdateSensor(index, { invert: e.target.checked })}
                   />
                 </TableCell>
                 <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>

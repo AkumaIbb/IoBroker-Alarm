@@ -1,14 +1,12 @@
-export type SensorRole = 'perimeter' | 'entry' | 'interior' | '24h';
-export type SensorPolicy = 'instant' | 'entryDelay' | 'silent';
+export type SensorType = 'window' | 'motion' | 'door' | 'other';
+export type SensorGuideline = 'perimeter' | 'entry' | 'all';
 
 export interface SensorConfig {
-  stateId: string;
+  id: string;
   name: string;
-  role: SensorRole;
+  type: SensorType;
+  guideline: SensorGuideline;
   invert: boolean;
-  triggerValue: boolean;
-  policy: SensorPolicy;
-  bypass: boolean;
   debounceMs?: number;
 }
 

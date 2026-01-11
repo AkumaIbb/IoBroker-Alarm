@@ -12,13 +12,16 @@ const CONTROL_MODE_VALUES = [
 
 type ControlMode = (typeof CONTROL_MODE_VALUES)[number];
 
-type SensorType = "contact" | "motion" | "vibration" | "custom";
+type SensorType = "window" | "motion" | "door" | "other";
 type SensorModeMask = "perimeter" | "full";
 type OutputType = "siren" | "light" | "notification" | "custom";
+const SENSOR_TYPE_VALUES = ["window", "motion", "door", "other"] as const;
 const SENSOR_MODE_MASK_VALUES = ["perimeter", "full"] as const;
 
 type SensorPolicy = "instant" | "silent" | "entryDelay";
 const SENSOR_POLICY_VALUES = ["instant", "silent", "entryDelay"] as const;
+type SensorGuideline = "perimeter" | "entry" | "all";
+const SENSOR_GUIDELINE_VALUES = ["perimeter", "entry", "all"] as const;
 
 interface SmarthomeAlarmConfig {
   exitDelaySec: number;
@@ -35,12 +38,14 @@ interface SmarthomeAlarmConfig {
 }
 
 interface ConfigSensor {
-  id: string;
-  name: string;
-  type: SensorType;
-  invert: boolean;
+  id?: string;
+  stateId?: string;
+  name?: string;
+  type?: SensorType;
+  guideline?: SensorGuideline;
+  invert?: boolean;
   debounceMs?: number;
-  bypassable: boolean;
+  bypassable?: boolean;
   policy?: SensorPolicy;
   modeMask?: SensorModeMask[];
 }
@@ -58,6 +63,7 @@ interface InternalSensor extends ConfigSensor {
   triggerValue: boolean;
   policy: SensorPolicy;
   modeMask: SensorModeMask[];
+  guideline: SensorGuideline;
 }
 
 interface InternalOutput extends ConfigOutput {
@@ -543,6 +549,53 @@ class SmarthomeAlarm extends utils.Adapter {
     return "instant";
   }
 
+  private normalizeSensorType(value: unknown): SensorType {
+    if (SENSOR_TYPE_VALUES.includes(value as SensorType)) {
+      return value as SensorType;
+    }
+    if (value === "contact") {
+      return "window";
+    }
+    if (value === "vibration" || value === "custom") {
+      return "other";
+    }
+    return "other";
+  }
+
+  private normalizeSensorGuideline(value: unknown): SensorGuideline {
+    if (SENSOR_GUIDELINE_VALUES.includes(value as SensorGuideline)) {
+      return value as SensorGuideline;
+    }
+    return "all";
+  }
+
+  private resolveSensorGuideline(sensor: ConfigSensor): {
+    guideline: SensorGuideline;
+    policy: SensorPolicy;
+    modeMask: SensorModeMask[];
+  } {
+    if (sensor.guideline) {
+      const guideline = this.normalizeSensorGuideline(sensor.guideline);
+      if (guideline === "entry") {
+        return { guideline, policy: "entryDelay", modeMask: ["perimeter", "full"] };
+      }
+      if (guideline === "perimeter") {
+        return { guideline, policy: "instant", modeMask: ["perimeter", "full"] };
+      }
+      return { guideline, policy: "instant", modeMask: ["full"] };
+    }
+
+    const policy = this.normalizeSensorPolicy(sensor.policy);
+    const modeMask = this.normalizeModeMask(sensor.modeMask);
+    let guideline: SensorGuideline = "all";
+    if (policy === "entryDelay") {
+      guideline = "entry";
+    } else if (modeMask.includes("perimeter")) {
+      guideline = "perimeter";
+    }
+    return { guideline, policy, modeMask };
+  }
+
   private normalizeModeMask(value: unknown): SensorModeMask[] {
     if (!Array.isArray(value)) {
       return ["perimeter", "full"];
@@ -584,18 +637,21 @@ class SmarthomeAlarm extends utils.Adapter {
     let configured = true;
 
     this.configuredSensors = sensors.flatMap((sensor, index) => {
-      if (!sensor?.id) {
+      const sensorId = sensor?.id || sensor?.stateId;
+      if (!sensorId) {
         this.log.warn(`Sensor entry ${index + 1} is missing an id.`);
         configured = false;
         return [];
       }
-      const modeMask = this.normalizeModeMask(sensor.modeMask);
-      const policy = this.normalizeSensorPolicy(sensor.policy);
+      const { guideline, policy, modeMask } = this.resolveSensorGuideline(sensor);
+      const type = this.normalizeSensorType(sensor.type);
       return [{
         ...sensor,
-        name: sensor.name || sensor.id,
-        stateId: sensor.id,
+        type,
+        name: sensor.name || sensorId,
+        stateId: sensorId,
         triggerValue: true,
+        guideline,
         policy,
         modeMask,
       }];
@@ -709,6 +765,14 @@ class SmarthomeAlarm extends utils.Adapter {
         write: false,
         def: "",
       }, "");
+      await this.ensureState(`${channelId}.guideline`, {
+        name: { de: "Richtlinie", en: "Guideline" },
+        type: "string",
+        role: "text",
+        read: true,
+        write: false,
+        def: "",
+      }, "");
       await this.ensureState(`${channelId}.invert`, {
         name: { de: "Invertiert", en: "Inverted" },
         type: "boolean",
@@ -743,6 +807,7 @@ class SmarthomeAlarm extends utils.Adapter {
       }, "[]");
       await this.setStateAsync(`${channelId}.id`, { val: sensor.stateId, ack: true });
       await this.setStateAsync(`${channelId}.type`, { val: sensor.type, ack: true });
+      await this.setStateAsync(`${channelId}.guideline`, { val: sensor.guideline, ack: true });
       await this.setStateAsync(`${channelId}.invert`, { val: sensor.invert ?? false, ack: true });
       await this.setStateAsync(`${channelId}.debounceMs`, { val: sensor.debounceMs ?? 0, ack: true });
       await this.setStateAsync(`${channelId}.bypassable`, { val: sensor.bypassable ?? false, ack: true });

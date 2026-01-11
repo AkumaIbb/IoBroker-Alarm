@@ -55,7 +55,7 @@
             { "name": "name", "type": "text", "title": "label_name" },
 
             {
-              "name": "stateId",
+              "name": "id",
               "type": "objectId",
               "title": "label_stateId",
               "filter": "state"
@@ -65,28 +65,26 @@
               "name": "type",
               "type": "select",
               "title": "label_sensorType",
-              "default": "contact",
+              "default": "window",
               "options": [
-                { "value": "contact", "label": "sensor_type_contact" },
+                { "value": "window", "label": "sensor_type_window" },
                 { "value": "motion", "label": "sensor_type_motion" },
-                { "value": "vibration", "label": "sensor_type_vibration" },
-                { "value": "custom", "label": "sensor_type_custom" }
+                { "value": "door", "label": "sensor_type_door" },
+                { "value": "other", "label": "sensor_type_other" }
               ]
             },
 
             {
-              "name": "policy",
+              "name": "guideline",
               "type": "select",
-              "title": "label_policy",
-              "default": "instant",
+              "title": "label_guideline",
+              "default": "all",
               "options": [
-                { "value": "instant", "label": "policy_instant" },
-                { "value": "entryDelay", "label": "policy_entryDelay" },
-                { "value": "silent", "label": "policy_silent" }
+                { "value": "perimeter", "label": "guideline_perimeter" },
+                { "value": "entry", "label": "guideline_entry" },
+                { "value": "all", "label": "guideline_all" }
               ]
             },
-
-            { "name": "invert", "type": "checkbox", "title": "label_invert", "default": false },
 
             {
               "name": "debounceMs",
@@ -97,18 +95,7 @@
               "allowEmpty": true
             },
 
-            { "name": "bypassable", "type": "checkbox", "title": "label_bypassable", "default": true },
-
-            {
-              "name": "modeMask",
-              "type": "multiselect",
-              "title": "label_modeMask",
-              "options": [
-                { "value": "perimeter", "label": "mode_perimeter" },
-                { "value": "full", "label": "mode_full" }
-              ],
-              "default": ["full", "perimeter"]
-            }
+            { "name": "invert", "type": "checkbox", "title": "label_invert", "default": false }
           ]
         },
 
