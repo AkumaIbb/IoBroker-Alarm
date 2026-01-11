@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "smarthome-alarm",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "news": {
+      "0.0.6": {
+        "en": "Add chirp output signals and update guideline translations.",
+        "de": "Signalton-Ausgänge hinzugefügt und Richtlinien-Übersetzungen aktualisiert."
+      },
       "0.0.5": {
         "en": "Alarm modes established.",
         "de": "Alarm-Modi aktiviert und überholt."
