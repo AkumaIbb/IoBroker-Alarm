@@ -82,6 +82,9 @@ class SmarthomeAlarm extends utils.Adapter {
   private preAlarmTimeout: ReturnType<typeof setTimeout> | null = null;
   private alarmDurationTimeout: ReturnType<typeof setTimeout> | null = null;
   private silentEventTimeout: ReturnType<typeof setTimeout> | null = null;
+  private entryChirpTimeout: ReturnType<typeof setTimeout> | null = null;
+  private leaveChirpTimeout: ReturnType<typeof setTimeout> | null = null;
+  private postAlarmChirpTimeout: ReturnType<typeof setTimeout> | null = null;
   private sensorsByStateId = new Map<string, InternalSensor>();
   private configuredSensors: InternalSensor[] = [];
   private configuredOutputs: InternalOutput[] = [];
@@ -315,6 +318,30 @@ class SmarthomeAlarm extends utils.Adapter {
       write: false,
       def: "{}",
     }, "{}");
+    await this.ensureState("outputs.postAlarmChirp", {
+      name: { de: "Nachalarm-Signalton", en: "Post-alarm chirp" },
+      type: "boolean",
+      role: "indicator",
+      read: true,
+      write: false,
+      def: false,
+    }, false);
+    await this.ensureState("outputs.entryChirp", {
+      name: { de: "Eingangs-Signalton", en: "Entry chirp" },
+      type: "boolean",
+      role: "indicator",
+      read: true,
+      write: false,
+      def: false,
+    }, false);
+    await this.ensureState("outputs.leaveChirp", {
+      name: { de: "Ausgangs-Signalton", en: "Exit chirp" },
+      type: "boolean",
+      role: "indicator",
+      read: true,
+      write: false,
+      def: false,
+    }, false);
 
     await this.ensureState("events.last", {
       name: { de: "Letztes Ereignis", en: "Last event" },
@@ -494,11 +521,16 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private async handleDisarm(): Promise<void> {
+    const alarmActiveState = await this.getStateAsync("alarm.active");
+    const hadAlarm = alarmActiveState?.val === true;
+    const config = this.config as SmarthomeAlarmConfig;
     await this.clearExitTimers();
     await this.clearEntryTimers();
     await this.clearPreAlarmTimer();
     await this.clearAlarmDurationTimer();
     await this.clearSilentEventTimer();
+    await this.stopChirpState("outputs.entryChirp", "entryChirpTimeout");
+    await this.stopChirpState("outputs.leaveChirp", "leaveChirpTimeout");
     await this.setControlMode("disarmed");
     await this.setStateAsync("timers.exitRemaining", { val: 0, ack: true });
     await this.setStateAsync("timers.entryRemaining", { val: 0, ack: true });
@@ -519,6 +551,11 @@ class SmarthomeAlarm extends utils.Adapter {
       severity: "info",
       message: "System disarmed",
     });
+    if (hadAlarm) {
+      await this.startChirpState("outputs.postAlarmChirp", Math.max(0, config.chirpSec || 0), "postAlarmChirpTimeout");
+    } else {
+      await this.stopChirpState("outputs.postAlarmChirp", "postAlarmChirpTimeout");
+    }
   }
 
   private async clearExitTimers(): Promise<void> {
@@ -562,6 +599,33 @@ class SmarthomeAlarm extends utils.Adapter {
       clearTimeout(this.silentEventTimeout);
       this.silentEventTimeout = null;
     }
+  }
+
+  private async startChirpState(
+    stateId: string,
+    durationSec: number,
+    timeoutKey: "entryChirpTimeout" | "leaveChirpTimeout" | "postAlarmChirpTimeout",
+  ): Promise<void> {
+    await this.stopChirpState(stateId, timeoutKey);
+    if (durationSec <= 0) {
+      return;
+    }
+    await this.setStateAsync(stateId, { val: true, ack: true });
+    this[timeoutKey] = setTimeout(async () => {
+      await this.setStateAsync(stateId, { val: false, ack: true });
+      this[timeoutKey] = null;
+    }, durationSec * 1000);
+  }
+
+  private async stopChirpState(
+    stateId: string,
+    timeoutKey: "entryChirpTimeout" | "leaveChirpTimeout" | "postAlarmChirpTimeout",
+  ): Promise<void> {
+    if (this[timeoutKey]) {
+      clearTimeout(this[timeoutKey]);
+      this[timeoutKey] = null;
+    }
+    await this.setStateAsync(stateId, { val: false, ack: true });
   }
 
   private normalizeSensorPolicy(value: unknown): SensorPolicy {
@@ -1139,6 +1203,8 @@ class SmarthomeAlarm extends utils.Adapter {
   ): Promise<void> {
     const config = this.config as SmarthomeAlarmConfig;
     const delaySec = Math.max(0, config.entryDelaySec || 0);
+    await this.startChirpState("outputs.entryChirp", delaySec, "entryChirpTimeout");
+    await this.startChirpState("outputs.leaveChirp", Math.max(0, config.exitDelaySec || 0), "leaveChirpTimeout");
     await this.clearEntryTimers();
     await this.setControlMode("entry_delay");
     await this.updateLastEvent("entry_delay", sensor);
@@ -1404,6 +1470,9 @@ class SmarthomeAlarm extends utils.Adapter {
       .then(() => this.clearPreAlarmTimer())
       .then(() => this.clearAlarmDurationTimer())
       .then(() => this.clearSilentEventTimer())
+      .then(() => this.stopChirpState("outputs.entryChirp", "entryChirpTimeout"))
+      .then(() => this.stopChirpState("outputs.leaveChirp", "leaveChirpTimeout"))
+      .then(() => this.stopChirpState("outputs.postAlarmChirp", "postAlarmChirpTimeout"))
       .then(() => callback())
       .catch(() => callback());
   }
