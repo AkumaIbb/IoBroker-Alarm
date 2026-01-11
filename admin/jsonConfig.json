@@ -101,6 +101,25 @@
             }
           ]
         },
+        "policy": {
+          "type": "select",
+          "title": "label_policy",
+          "default": "instant",
+          "options": [
+            {
+              "value": "instant",
+              "label": "policy_instant"
+            },
+            {
+              "value": "entryDelay",
+              "label": "policy_entryDelay"
+            },
+            {
+              "value": "silent",
+              "label": "policy_silent"
+            }
+          ]
+        },
         "invert": {
           "type": "checkbox",
           "title": "label_invert"

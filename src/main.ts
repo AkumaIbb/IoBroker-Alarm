@@ -15,6 +15,10 @@ type ControlMode = (typeof CONTROL_MODE_VALUES)[number];
 type SensorType = "contact" | "motion" | "vibration" | "custom";
 type SensorModeMask = "perimeter" | "full";
 type OutputType = "siren" | "light" | "notification" | "custom";
+const SENSOR_MODE_MASK_VALUES = ["perimeter", "full"] as const;
+
+type SensorPolicy = "instant" | "silent" | "entryDelay";
+const SENSOR_POLICY_VALUES = ["instant", "silent", "entryDelay"] as const;
 
 interface SmarthomeAlarmConfig {
   exitDelaySec: number;
@@ -37,6 +41,7 @@ interface ConfigSensor {
   invert: boolean;
   debounceMs?: number;
   bypassable: boolean;
+  policy?: SensorPolicy;
   modeMask?: SensorModeMask[];
 }
 
@@ -44,14 +49,14 @@ interface ConfigOutput {
   id: string;
   name: string;
   type: OutputType;
-  activeValue?: string | number | boolean;
-  inactiveValue?: string | number | boolean;
+  activeValue?: ioBroker.StateValue;
+  inactiveValue?: ioBroker.StateValue;
 }
 
 interface InternalSensor extends ConfigSensor {
   stateId: string;
   triggerValue: boolean;
-  policy: "instant";
+  policy: SensorPolicy;
   modeMask: SensorModeMask[];
 }
 
@@ -531,6 +536,24 @@ class SmarthomeAlarm extends utils.Adapter {
     }
   }
 
+  private normalizeSensorPolicy(value: unknown): SensorPolicy {
+    if (SENSOR_POLICY_VALUES.includes(value as SensorPolicy)) {
+      return value as SensorPolicy;
+    }
+    return "instant";
+  }
+
+  private normalizeModeMask(value: unknown): SensorModeMask[] {
+    if (!Array.isArray(value)) {
+      return ["perimeter", "full"];
+    }
+    const normalized = value.filter((entry): entry is SensorModeMask =>
+      SENSOR_MODE_MASK_VALUES.includes(entry as SensorModeMask),
+    );
+    const unique = Array.from(new Set(normalized));
+    return unique.length > 0 ? unique : ["perimeter", "full"];
+  }
+
   private async ensureState(
     id: string,
     common: ioBroker.StateCommon,
@@ -566,13 +589,14 @@ class SmarthomeAlarm extends utils.Adapter {
         configured = false;
         return [];
       }
-      const modeMask = sensor.modeMask && sensor.modeMask.length > 0 ? sensor.modeMask : ["perimeter", "full"];
+      const modeMask = this.normalizeModeMask(sensor.modeMask);
+      const policy = this.normalizeSensorPolicy(sensor.policy);
       return [{
         ...sensor,
         name: sensor.name || sensor.id,
         stateId: sensor.id,
         triggerValue: true,
-        policy: "instant",
+        policy,
         modeMask,
       }];
     });
@@ -600,7 +624,10 @@ class SmarthomeAlarm extends utils.Adapter {
   }
 
   private normalizeOutputValue(value: unknown, fallback: ioBroker.StateValue): ioBroker.StateValue {
-    if (value === null || value === undefined || value === "") {
+    if (value === null) {
+      return null;
+    }
+    if (value === undefined || value === "") {
       return fallback;
     }
     if (typeof value === "string") {
@@ -1226,7 +1253,6 @@ class SmarthomeAlarm extends utils.Adapter {
       .then(() => this.clearPreAlarmTimer())
       .then(() => this.clearAlarmDurationTimer())
       .then(() => this.clearSilentEventTimer())
-      .then(() => this.stopBeepPattern())
       .then(() => callback())
       .catch(() => callback());
   }
