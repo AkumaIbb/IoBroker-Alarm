@@ -67,6 +67,7 @@ class SmarthomeAlarm extends utils.Adapter {
         this.lastEventTimestamp = new Map();
         this.lastSensorValue = new Map();
         this.baselineSnapshot = new Map();
+        this.armingStateSnapshot = new Map();
         this.runtimeBypass = new Set();
         this.initializingSensors = false;
         this.lastOutputValues = new Map();
@@ -165,12 +166,12 @@ class SmarthomeAlarm extends utils.Adapter {
         }, false);
         await this.ensureState("alarm.silentEvent", {
             name: { de: "Stilles Ereignis", en: "Silent event" },
-            type: "boolean",
-            role: "indicator",
+            type: "number",
+            role: "value",
             read: true,
             write: false,
-            def: false,
-        }, false);
+            def: 0,
+        }, 0);
         await this.ensureState("timers.exitRemaining", {
             name: { de: "Verbleibende Ausgangszeit", en: "Exit time remaining" },
             type: "number",
@@ -245,6 +246,14 @@ class SmarthomeAlarm extends utils.Adapter {
             write: false,
             def: "[]",
         }, "[]");
+        await this.ensureState("arming.stateList", {
+            name: { de: "Sensorstatus bei Scharfschaltung", en: "Arming state list" },
+            type: "string",
+            role: "json",
+            read: true,
+            write: false,
+            def: "[]",
+        }, "[]");
         await this.ensureState("outputs.status", {
             name: { de: "Ausgangsstatus", en: "Outputs status" },
             type: "string",
@@ -270,6 +279,7 @@ class SmarthomeAlarm extends utils.Adapter {
             def: 0,
         }, 0);
         await this.subscribeStatesAsync("control.*");
+        await this.subscribeStatesAsync("alarm.silenced");
         await this.initializeSensors();
         const currentModeState = await this.getStateAsync("control.mode");
         const currentMode = currentModeState?.val;
@@ -319,6 +329,12 @@ class SmarthomeAlarm extends utils.Adapter {
             else {
                 this.log.warn(`Unsupported mode value: ${state.val}`);
             }
+            return;
+        }
+        if (localId === "alarm.silenced") {
+            await this.setStateAsync("alarm.silenced", { val: state.val === true, ack: true });
+            await this.updateOutputsForMode(await this.getControlMode());
+            return;
         }
     }
     async handleArm(targetMode) {
@@ -331,6 +347,7 @@ class SmarthomeAlarm extends utils.Adapter {
         await this.clearSilentEventTimer();
         const openSensors = await this.getOpenSensorsForMode(targetMode);
         await this.setStateAsync("arming.openList", { val: JSON.stringify(openSensors), ack: true });
+        await this.setStateAsync("arming.stateList", { val: "[]", ack: true });
         let bypassedSensors = [];
         if (openSensors.length > 0) {
             if (config.blockArmingIfOpen) {
@@ -385,6 +402,7 @@ class SmarthomeAlarm extends utils.Adapter {
         if (config.useBaselineSnapshot) {
             await this.captureBaselineSnapshot();
         }
+        await this.captureArmingStateSnapshot(targetMode);
         await this.setControlMode(targetMode);
         await this.updateLastEvent("armed", undefined, targetMode);
         await this.emitEvent({
@@ -406,11 +424,13 @@ class SmarthomeAlarm extends utils.Adapter {
         await this.setStateAsync("alarm.active", { val: false, ack: true });
         await this.setStateAsync("alarm.outputsActive", { val: false, ack: true });
         await this.setStateAsync("alarm.silenced", { val: false, ack: true });
-        await this.setStateAsync("alarm.silentEvent", { val: false, ack: true });
+        await this.setStateAsync("alarm.silentEvent", { val: 0, ack: true });
         this.runtimeBypass.clear();
         this.baselineSnapshot.clear();
+        this.armingStateSnapshot.clear();
         await this.setStateAsync("arming.openList", { val: "[]", ack: true });
         await this.setStateAsync("arming.bypassedList", { val: "[]", ack: true });
+        await this.setStateAsync("arming.stateList", { val: "[]", ack: true });
         await this.updateLastEvent("disarmed");
         await this.emitEvent({
             type: "disarmed",
@@ -802,6 +822,15 @@ class SmarthomeAlarm extends utils.Adapter {
         }
         const previousValue = this.lastSensorValue.get(id);
         this.lastSensorValue.set(id, normalized);
+        const currentMode = await this.getControlMode();
+        const stateSnapshotValue = this.armingStateSnapshot.get(id);
+        if ((currentMode === "armed_full" || currentMode === "armed_perimeter")
+            && this.isSensorRelevantForMode(sensor, currentMode)
+            && stateSnapshotValue !== undefined
+            && stateSnapshotValue !== normalized) {
+            await this.handleStateChangeTrigger(sensor, id, currentMode);
+            return;
+        }
         if (previousValue === undefined) {
             return;
         }
@@ -811,8 +840,32 @@ class SmarthomeAlarm extends utils.Adapter {
         if (normalized !== sensor.triggerValue) {
             return;
         }
-        const currentMode = await this.getControlMode();
         await this.handleSensorTrigger(sensor, id, currentMode);
+    }
+    async captureArmingStateSnapshot(targetMode) {
+        this.armingStateSnapshot.clear();
+        const stateList = [];
+        const sensors = Array.from(this.sensorsByStateId.entries());
+        for (const [stateId, sensor] of sensors) {
+            if (!this.isSensorRelevantForMode(sensor, targetMode)) {
+                continue;
+            }
+            if (this.runtimeBypass.has(stateId)) {
+                continue;
+            }
+            const state = await this.getForeignStateAsync(stateId);
+            const normalized = state ? this.normalizeSensorValue(state.val, sensor) : null;
+            const sensorName = sensor.name ?? stateId;
+            if (normalized === null) {
+                await this.addTroubleSensor(stateId);
+                stateList.push({ id: stateId, name: sensorName, state: null });
+                continue;
+            }
+            await this.removeTroubleSensor(stateId);
+            this.armingStateSnapshot.set(stateId, normalized);
+            stateList.push({ id: stateId, name: sensorName, state: normalized });
+        }
+        await this.setStateAsync("arming.stateList", { val: JSON.stringify(stateList), ack: true });
     }
     normalizeSensorValue(value, sensor) {
         if (value === null || value === undefined) {
@@ -969,6 +1022,7 @@ class SmarthomeAlarm extends utils.Adapter {
         const config = this.config;
         await this.clearPreAlarmTimer();
         await this.setControlMode("alarm_pre");
+        await this.setStateAsync("alarm.active", { val: true, ack: true });
         await this.updateLastEvent(reason, sensor, "alarm_pre");
         await this.emitEvent({
             type: "alarm_pre_started",
@@ -1006,9 +1060,9 @@ class SmarthomeAlarm extends utils.Adapter {
             }, durationSec * 1000);
         }
     }
-    async handleSilentEvent(sensor) {
+    async handleSilentEvent(sensor, reason = "silent_trigger") {
         const mode = await this.getControlMode();
-        await this.updateLastEvent("silent_trigger", sensor);
+        await this.updateLastEvent(reason, sensor);
         await this.emitEvent({
             type: "silent_event",
             mode,
@@ -1017,11 +1071,25 @@ class SmarthomeAlarm extends utils.Adapter {
             sensorName: sensor.name,
             message: `Silent event (${sensor.name || sensor.stateId})`,
         });
-        await this.setStateAsync("alarm.silentEvent", { val: true, ack: true });
-        await this.clearSilentEventTimer();
-        this.silentEventTimeout = setTimeout(async () => {
-            await this.setStateAsync("alarm.silentEvent", { val: false, ack: true });
-        }, 10000);
+        await this.setStateAsync("alarm.active", { val: true, ack: true });
+        const silentEventState = await this.getStateAsync("alarm.silentEvent");
+        const currentCount = typeof silentEventState?.val === "number" ? silentEventState.val : 0;
+        await this.setStateAsync("alarm.silentEvent", { val: currentCount + 1, ack: true });
+    }
+    async handleStateChangeTrigger(sensor, stateId, mode) {
+        if (sensor.policy === "silent") {
+            await this.handleSilentEvent(sensor, "state_change");
+            return;
+        }
+        if (mode === "alarm_pre" || mode === "alarm_full") {
+            await this.updateLastEvent("state_change", sensor, mode);
+            return;
+        }
+        if (sensor.policy === "entryDelay") {
+            await this.startEntryDelay(sensor, stateId);
+            return;
+        }
+        await this.triggerAlarm(sensor, stateId, "state_change");
     }
     async updateLastEvent(reason, sensor, mode) {
         const triggerSensor = sensor?.name || sensor?.stateId || "";
@@ -1073,12 +1141,15 @@ class SmarthomeAlarm extends utils.Adapter {
     async updateOutputsForMode(mode) {
         const outputs = this.configuredOutputs;
         this.lastOutputValues.clear();
+        const silencedState = await this.getStateAsync("alarm.silenced");
+        const silenced = silencedState?.val === true;
         for (const output of outputs) {
             if (!output.stateId) {
                 continue;
             }
             const isActive = mode === "alarm_pre" || mode === "alarm_full";
-            const targetValue = isActive ? output.activeValue : output.inactiveValue;
+            const isMuted = isActive && silenced && output.type === "siren";
+            const targetValue = isActive && !isMuted ? output.activeValue : output.inactiveValue;
             await this.setOutputValue(output.stateId, targetValue);
         }
         await this.updateOutputsStatus();
