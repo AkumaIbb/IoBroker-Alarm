@@ -483,6 +483,7 @@ class SmarthomeAlarm extends utils.Adapter {
       severity: "info",
       message: `Arming started (${targetMode})`,
     });
+    await this.startChirpState("outputs.leaveChirp", delaySec, "leaveChirpTimeout");
 
     if (delaySec === 0) {
       await this.finishArming(targetMode);
@@ -1204,7 +1205,6 @@ class SmarthomeAlarm extends utils.Adapter {
     const config = this.config as SmarthomeAlarmConfig;
     const delaySec = Math.max(0, config.entryDelaySec || 0);
     await this.startChirpState("outputs.entryChirp", delaySec, "entryChirpTimeout");
-    await this.startChirpState("outputs.leaveChirp", Math.max(0, config.exitDelaySec || 0), "leaveChirpTimeout");
     await this.clearEntryTimers();
     await this.setControlMode("entry_delay");
     await this.updateLastEvent("entry_delay", sensor);
